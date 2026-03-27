@@ -809,6 +809,7 @@ local Library do
         pcall(function() UserInputService.MouseIconEnabled = true end)
         if Library.CursorConn then pcall(function() Library.CursorConn:Disconnect() end) end
         if Library.CursorGui then pcall(function() Library.CursorGui:Destroy() end) end
+        if Library.TooltipGui then Library.TooltipGui:Clean() end
 
         Library = nil 
         getgenv().Library = nil
@@ -1016,13 +1017,22 @@ local Library do
         and MousePosition.Y >= Frame.AbsolutePosition.Y and MousePosition.Y <= Frame.AbsolutePosition.Y + Frame.AbsoluteSize.Y
     end
 
-    -- Tooltip system
     do
         local TooltipPadX = 10
         local TooltipVisible = false
 
+        local TooltipGui = Instances:Create("ScreenGui", {
+            Parent = gethui(),
+            Name = "\0",
+            ZIndexBehavior = Enum.ZIndexBehavior.Global,
+            DisplayOrder = 9998,
+            ResetOnSpawn = false,
+            IgnoreGuiInset = true
+        })
+        Library.TooltipGui = TooltipGui
+
         local TooltipFrame = Instances:Create("Frame", {
-            Parent = Library.Holder.Instance,
+            Parent = TooltipGui.Instance,
             Name = "\0",
             BackgroundColor3 = FromRGB(20, 19, 23),
             BackgroundTransparency = 1,
@@ -1071,17 +1081,22 @@ local Library do
 
         Library:Connect(RunService.RenderStepped, function()
             if not TooltipVisible then return end
-            local ok, MousePos = pcall(UserInputService.GetMouseLocation, UserInputService)
-            if not ok then return end
+            local mx, my
+            local ok, pos = pcall(UserInputService.GetMouseLocation, UserInputService)
+            if ok and pos then
+                mx, my = pos.X, pos.Y
+            else
+                mx, my = Mouse.X, Mouse.Y + 36
+            end
             local ScreenSize = Camera.ViewportSize
             local TFSize = TooltipFrame.Instance.AbsoluteSize
-            local X = MousePos.X + 14
-            local Y = MousePos.Y + 18
-            if X + TFSize.X > ScreenSize.X - 4 then
-                X = MousePos.X - TFSize.X - 6
+            local X = mx + 14
+            local Y = my + 20
+            if ScreenSize.X > 100 and X + TFSize.X > ScreenSize.X - 4 then
+                X = mx - TFSize.X - 6
             end
-            if Y + TFSize.Y > ScreenSize.Y - 4 then
-                Y = MousePos.Y - TFSize.Y - 6
+            if ScreenSize.Y > 100 and Y + TFSize.Y > ScreenSize.Y - 4 then
+                Y = my - TFSize.Y - 6
             end
             TooltipFrame.Instance.Position = UDim2New(0, X, 0, Y)
         end)
@@ -2449,6 +2464,7 @@ local Library do
                     Size = UDim2New(0, 677, 0, 644),
                     ZIndex = 2,
                     BorderSizePixel = 0,
+                    ClipsDescendants = true,
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["MainFrame"]:AddToTheme({BackgroundColor3 = "Background"})
 
@@ -3930,6 +3946,17 @@ local Library do
                     end
                 end
 
+                Instances:Create("Frame", {
+                    Parent = LeftCol.Instance,
+                    Name = "\0",
+                    BackgroundColor3 = FromRGB(38, 36, 46),
+                    Position = UDim2New(0, 0, 0, 120),
+                    Size = UDim2New(1, 0, 0, 1),
+                    BorderSizePixel = 0,
+                    ZIndex = 2,
+                    BackgroundTransparency = 0
+                })
+
                 DashItems["GameName"] = Instances:Create("TextLabel", {
                     Parent = LeftCol.Instance,
                     Name = "\0",
@@ -4177,7 +4204,7 @@ local Library do
                     Name = "\0",
                     BackgroundColor3 = FromRGB(38, 36, 46),
                     Position = UDim2New(0, 0, 0, 196),
-                    Size = UDim2New(1, 0, 0, 1),
+                    Size = UDim2New(0.59, -12, 0, 1),
                     BorderSizePixel = 0,
                     ZIndex = 2,
                     BackgroundTransparency = 0
@@ -8261,15 +8288,36 @@ local Library do
                     Library:SetDPIScale(Value)
                 end
             })
+
+            UISection:Divider()
+
+            UISection:Toggle({
+                Name = "Custom Cursor",
+                Flag = "CustomCursorEnabled",
+                Default = false,
+                Tooltip = "Replaces the default cursor with a themed blue cursor.",
+                Callback = function(v)
+                    Library:SetCustomCursor(v)
+                end
+            })
         end
 
         local KeybindSection = Page:Section({Name = "Keybinds", Icon = "keyboard", Side = 1}) do
+            KeybindSection:Toggle({
+                Name = "Enable Menu Keybind",
+                Flag = "MenuKeybindEnabled",
+                Default = true,
+                Tooltip = "When off, the Toggle UI keybind will not work.",
+                Callback = function(v) end
+            })
             KeybindSection:Keybind({
                 Name = "Toggle UI",
                 Flag = "MenuBind",
                 Default = Enum.KeyCode.RightShift,
                 Callback = function()
-                    Window:SetOpen(not Window.IsOpen)
+                    if Library.Flags.MenuKeybindEnabled ~= false then
+                        Window:SetOpen(not Window.IsOpen)
+                    end
                 end
             })
         end
@@ -8366,9 +8414,11 @@ local Library do
         local gui = Instance.new("ScreenGui")
         gui.Name = "\0"
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        gui.DisplayOrder = 999
+        gui.DisplayOrder = 9999
         gui.ResetOnSpawn = false
-        gui.Parent = gethui()
+        gui.IgnoreGuiInset = true
+        gui.Enabled = false
+        pcall(function() gui.Parent = gethui() end)
 
         local img = Instance.new("ImageLabel")
         img.Name = "\0"
@@ -8380,17 +8430,23 @@ local Library do
         img.ImageColor3 = FromRGB(70, 150, 255)
         img.Parent = gui
 
-        pcall(function() UserInputService.MouseIconEnabled = false end)
-
         local CursorConn = RunService.RenderStepped:Connect(function()
+            if not gui.Enabled then return end
             local ok, pos = pcall(UserInputService.GetMouseLocation, UserInputService)
             if ok and pos then
                 img.Position = UDim2New(0, pos.X, 0, pos.Y)
+            else
+                img.Position = UDim2New(0, Mouse.X, 0, Mouse.Y + 36)
             end
         end)
 
         Library.CursorGui = gui
         Library.CursorConn = CursorConn
+
+        Library.SetCustomCursor = function(self, enabled)
+            gui.Enabled = enabled
+            pcall(function() UserInputService.MouseIconEnabled = not enabled end)
+        end
     end
 end
 
