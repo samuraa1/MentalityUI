@@ -4062,6 +4062,7 @@ local Library do
                     local linkHoverRing = Instances:Create("Frame", {
                         Parent = linkBtn.Instance,
                         Name = "\0",
+                        Active = false,
                         AnchorPoint = Vector2New(0.5, 0.5),
                         Position = UDim2New(0.5, 0, 0.5, 0),
                         Size = UDim2New(1, 8, 1, 8),
