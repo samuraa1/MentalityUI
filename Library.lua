@@ -793,6 +793,38 @@ local Library do
         PaddingLeft = UDimNew(0, 12)
     })    
 
+    do
+        local CursorGui = Instances:Create("ScreenGui", {
+            Parent = gethui(),
+            Name = "\0",
+            ZIndexBehavior = Enum.ZIndexBehavior.Global,
+            DisplayOrder = 999,
+            ResetOnSpawn = false
+        })
+
+        local CursorFrame = Instances:Create("ImageLabel", {
+            Parent = CursorGui.Instance,
+            Name = "\0",
+            BackgroundTransparency = 1,
+            Size = UDim2New(0, 20, 0, 20),
+            ZIndex = 9999,
+            BorderSizePixel = 0,
+            Image = "rbxassetid://14149837042",
+            ImageColor3 = FromRGB(70, 150, 255)
+        })
+
+        pcall(function() UserInputService.MouseIconEnabled = false end)
+
+        Library:Connect(RunService.RenderStepped, function()
+            local ok, pos = pcall(UserInputService.GetMouseLocation, UserInputService)
+            if ok and pos then
+                CursorFrame.Instance.Position = UDim2New(0, pos.X, 0, pos.Y)
+            end
+        end)
+
+        Library.CursorGui = CursorGui
+    end
+
     Library.Unload = function(self)
         for Index, Value in self.Connections do 
             Value.Connection:Disconnect()
@@ -805,6 +837,9 @@ local Library do
         if self.Holder then 
             self.Holder:Clean()
         end
+
+        pcall(function() UserInputService.MouseIconEnabled = true end)
+        if Library.CursorGui then Library.CursorGui:Clean() end
 
         Library = nil 
         getgenv().Library = nil
@@ -2387,52 +2422,36 @@ local Library do
                 end   
             end
 
-            local Size = Items["Notification"].Instance.AbsoluteSize
-            Items["Notification"].Instance.Size = UDim2New(0, 0, 0, 0)
+            local fadeInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-            for Index, Value in Items do 
-                if Value.Instance:IsA("Frame") then
-                    Value.Instance.BackgroundTransparency = 1
-                elseif Value.Instance:IsA("TextLabel") then 
-                    Value.Instance.TextTransparency = 1
-                elseif Value.Instance:IsA("ImageLabel") then 
-                    Value.Instance.ImageTransparency = 1
-                end
-            end 
-            
-            task.wait(0.2)
+            Items["Title"].Instance.TextTransparency = 1
+            Items["Description"].Instance.TextTransparency = 1
+            Items["Icon"].Instance.ImageTransparency = 1
+            Items["Notification"].Instance.BackgroundTransparency = 1
+            Items["Accent"].Instance.BackgroundTransparency = 1
+            Items["Accent"].Instance.Size = UDim2New(0, 0, 0, 6)
 
-            Items["Notification"].Instance.AutomaticSize = Enum.AutomaticSize.Y
+            task.spawn(function()
+                task.wait(0.05)
+                Items["Title"]:Tween(fadeInfo, {TextTransparency = 0})
+                Items["Description"]:Tween(fadeInfo, {TextTransparency = 0.3})
+                Items["Icon"]:Tween(fadeInfo, {ImageTransparency = 0})
+                Items["Notification"]:Tween(fadeInfo, {BackgroundTransparency = 0.35})
+                Items["Accent"]:Tween(fadeInfo, {BackgroundTransparency = 0})
+                Items["Accent"]:Tween(TweenInfo.new(Data.Duration or 3, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(1, 0, 0, 6)})
 
-            Library:Thread(function()
-                for Index, Value in Items do 
-                    if Value.Instance:IsA("Frame") then
-                        Value:Tween(TweenInfo.new(1, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out, 0, false, 0), {BackgroundTransparency = 0})
-                    elseif Value.Instance:IsA("TextLabel") then 
-                        Value:Tween(TweenInfo.new(1, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out, 0, false, 0), {TextTransparency = 0})
-                    elseif Value.Instance:IsA("ImageLabel") then 
-                        Value:Tween(TweenInfo.new(1, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out, 0, false, 0), {ImageTransparency = 0})
-                    end
-                end
+                task.wait((Data.Duration or 3) + 0.5)
 
-                Items["Notification"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out, 0, false, 0), {Size = UDim2New(0, Size.X, 0, Size.Y)})
-                Items["Accent"]:Tween(TweenInfo.new(Data.Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(1, 0, 0, 6)})
+                Items["Title"]:Tween(fadeInfo, {TextTransparency = 1})
+                Items["Description"]:Tween(fadeInfo, {TextTransparency = 1})
+                Items["Icon"]:Tween(fadeInfo, {ImageTransparency = 1})
+                Items["Notification"]:Tween(fadeInfo, {BackgroundTransparency = 1})
+                Items["Accent"]:Tween(fadeInfo, {BackgroundTransparency = 1})
 
-                task.delay(Data.Duration + 0.15, function()
-                    for Index, Value in Items do 
-                        if Value.Instance:IsA("Frame") then
-                            Value:Tween(nil, {BackgroundTransparency = 1})
-                        elseif Value.Instance:IsA("TextLabel") then 
-                            Value:Tween(nil, {TextTransparency = 1})
-                        elseif Value.Instance:IsA("ImageLabel") then 
-                            Value:Tween(nil, {ImageTransparency = 1})
-                        end
-                    end
-
-                    Items["Notification"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out, 0, false, 0), {Size = UDim2New(0, 0, 0, 0)})
-                    task.wait(0.5)
+                task.wait(0.5)
+                if Items["Notification"] and Items["Notification"].Instance then
                     Items["Notification"]:Clean()
-                end)
+                end
             end)
         end
 
@@ -2472,6 +2491,7 @@ local Library do
                     })                    
                 end
 
+                Library.MainFrame = Items["MainFrame"]
                 Items["MainFrame"]:MakeResizeable(Vector2New(Items["MainFrame"].Instance.AbsoluteSize.X, Items["MainFrame"].Instance.AbsoluteSize.Y), Vector2New(9999, 9999), OriginalSizes)
                 Library:MakeBlurred(Items["MainFrame"], Window)
 
@@ -5363,9 +5383,6 @@ local Library do
             function Section:TweenElements(Bool, Debounce)
                 for Index, Value in Section.Elements do
                     Value:RefreshPosition(Bool)
-                    if not Debounce then 
-                        task.wait(0.03)
-                    end
                 end
             end
 
@@ -5854,8 +5871,8 @@ local Library do
 
             function Toggle:RefreshPosition(Bool)
                 if Bool then 
-                    Items["Indicator"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
-                    Items["Text"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 24, 0, 0)})
+                    Items["Indicator"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
+                    Items["Text"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 24, 0, 0)})
                 else
                     Items["Indicator"].Instance.Position = UDim2New(0, 60, 0, 0)
                     Items["Text"].Instance.Position = UDim2New(0, 84, 0, 0)
@@ -6229,13 +6246,11 @@ local Library do
 
             function Slider:RefreshPosition(Bool)
                 if Bool then 
-                    Items["RealSlider"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 20, 1, -3)})
-                    Items["Text"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
-                   -- Items["Value"].Instance.TextTransparency = 0.3
+                    Items["RealSlider"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 20, 1, -3)})
+                    Items["Text"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
                 else
                     Items["RealSlider"].Instance.Position = UDim2New(0, 80, 1, -3)
                     Items["Text"].Instance.Position = UDim2New(0, 80, 0, 0)
-                   -- Items["Value"].Instance.TextTransparency = 1
                 end
             end
 
@@ -6515,8 +6530,8 @@ local Library do
 
             function Dropdown:RefreshPosition(Bool)
                 if Bool then
-                    Items["Text"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0.5, 0)})
-                    Items["RealDropdown"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, 0, 0, 0)})
+                    Items["Text"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0.5, 0)})
+                    Items["RealDropdown"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, 0, 0, 0)})
                 else
                     Items["Text"].Instance.Position = UDim2New(0, 30, 0.5, 0)
                     Items["RealDropdown"].Instance.Position = UDim2New(1, 30, 0, 0)
@@ -6979,18 +6994,18 @@ local Library do
 
             function Label:RefreshPosition(Bool)
                 if Bool then 
-                    Items["Text"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 5)})
+                    Items["Text"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 5)})
 
                     if Items["SubElements"] then
-                        Items["SubElements"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 30)})
-                        Tween:Create(Items["Label"].Instance:FindFirstChild("nig"), TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, -16, 1, -6)}, true)
+                        Items["SubElements"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 30)})
+                        Tween:Create(Items["Label"].Instance:FindFirstChild("nig"), TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, -16, 1, -6)}, true)
                     end
                 else 
                     Items["Text"].Instance.Position = UDim2New(0, 30, 0, 5)
 
                     if Items["SubElements"] then
-                        Items["SubElements"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 30, 0, 30)})
-                        Tween:Create(Items["Label"].Instance:FindFirstChild("nig"), TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, 30, 1, -6)}, true)
+                        Items["SubElements"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 30, 0, 30)})
+                        Tween:Create(Items["Label"].Instance:FindFirstChild("nig"), TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, 30, 1, -6)}, true)
                     end
                 end
             end
@@ -7287,9 +7302,9 @@ local Library do
 
             function Keybind:RefreshPosition(Bool)
                 if Bool then 
-                    Items["Text"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 5)})
-                    Items["SubElements"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 30)})
-                    Items["Modes"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, 0, 0, 0)})
+                    Items["Text"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 5)})
+                    Items["SubElements"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 30)})
+                    Items["Modes"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, 0, 0, 0)})
                 else
                     Items["Text"].Instance.Position = UDim2New(0, 30, 0, 5)
                     Items["SubElements"].Instance.Position = UDim2New(0, 30, 0, 30)
@@ -7662,7 +7677,7 @@ local Library do
 
             function Textbox:RefreshPosition(Bool)
                 if Bool then
-                    Items["Background"]:Tween(TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
+                    Items["Background"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
                 else
                     Items["Background"].Instance.Position = UDim2New(0, 30, 0, 0)
                 end
@@ -8361,13 +8376,13 @@ local Library do
 
     Library.SetDPIScale = function(self, Scale)
         local factor = (Scale or 100) / 100
-        local ok, uiScale = pcall(function()
-            local holder = Library.Holder and Library.Holder.Instance
-            if not holder then return end
-            local s = holder:FindFirstChildOfClass("UIScale")
+        pcall(function()
+            local mainFrame = Library.MainFrame and Library.MainFrame.Instance
+            if not mainFrame then return end
+            local s = mainFrame:FindFirstChildOfClass("UIScale")
             if not s then
                 s = Instance.new("UIScale")
-                s.Parent = holder
+                s.Parent = mainFrame
             end
             s.Scale = factor
         end)
