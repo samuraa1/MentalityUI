@@ -9,6 +9,7 @@ local Library do
     local Players = game:GetService("Players")
     local HttpService = game:GetService("HttpService")
     local RunService = game:GetService("RunService")
+    local GuiService = game:GetService("GuiService")
     local CoreGui = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
     local TweenService = game:GetService("TweenService")
     local Lighting = game:GetService("Lighting")
@@ -567,14 +568,14 @@ local Library do
 
             for Index, Value in Edges do 
                 Value.Button:Connect("InputBegan", function(Input)
-                    if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                         BeginResizing(Value.Side)
                     end
                 end)
             end
 
             Library:Connect(UserInputService.InputEnded, function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                     if Resizing then
                         EndResizing()
                     end
@@ -770,7 +771,7 @@ local Library do
         Parent = gethui(),
         Name = "\0",
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
-        DisplayOrder = 2,
+        DisplayOrder = 80,
         ResetOnSpawn = false
     })
 
@@ -825,6 +826,7 @@ local Library do
             self.Holder:Clean()
         end
 
+        if Library.CursorScreenGui then pcall(function() Library.CursorScreenGui:Destroy() end) end
         if Library.CursorGui then pcall(function() Library.CursorGui:Destroy() end) end
         if Library.TooltipGui then Library.TooltipGui:Clean() end
 
@@ -2478,7 +2480,7 @@ local Library do
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
                     Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
-                    Size = UDim2New(0, 677, 0, 644),
+                    Size = IsMobile and UDim2New(0, 620, 0, 500) or UDim2New(0, 740, 0, 644),
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
@@ -2487,14 +2489,14 @@ local Library do
 
                 Instances:Create("UICorner", {
                     Parent = Items["MainFrame"].Instance,
-                    CornerRadius = UDimNew(0, 10)
+                    CornerRadius = UDimNew(0, 14)
                 })
 
                 if IsMobile then 
                     Instances:Create("UIScale", {
                         Parent = Items["MainFrame"].Instance,
                         Name = "\0",
-                        Scale = 0.699999988079071
+                        Scale = 0.78
                     })                    
                 end
 
@@ -2548,7 +2550,7 @@ local Library do
                     end)
 
                     Items["ResizeCorner"]:Connect("InputBegan", function(Input)
-                        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                             CornerResizing = true
                             CornerStartMouse = UserInputService:GetMouseLocation()
                             CornerStartSize = Vector2New(Items["MainFrame"].Instance.AbsoluteSize.X, Items["MainFrame"].Instance.AbsoluteSize.Y)
@@ -2557,7 +2559,7 @@ local Library do
                     end)
 
                     Library:Connect(UserInputService.InputEnded, function(Input)
-                        if Input.UserInputType == Enum.UserInputType.MouseButton1 and CornerResizing then
+                        if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and CornerResizing then
                             CornerResizing = false
                             ResizeIcon:Tween(TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {ImageTransparency = 0.5})
                         end
@@ -2581,7 +2583,7 @@ local Library do
                     BorderColor3 = FromRGB(0, 0, 0),
                     AnchorPoint = Vector2New(0, 0),
                     Position = UDim2New(0, 0, 0, 55),
-                    BackgroundTransparency = 0.15,
+                    BackgroundTransparency = 0.12,
                     Size = UDim2New(0, 225, 1, -55),
                     ZIndex = 2,
                     BorderSizePixel = 0,
@@ -2646,16 +2648,25 @@ local Library do
                         Text = "",
                         AutoButtonColor = false,
                         Name = "\0",
-                        Position = IsMobile and UDim2New(0.5, 0, 0, 20) or UDim2New(1, -70, 0, 24),
+                        Position = IsMobile and UDim2New(0.5, 0, 0, 20) or UDim2New(1, -76, 0, 24),
                         AnchorPoint = IsMobile and Vector2New(0.5, 0) or Vector2New(1, 0),
                         Visible = true,
                         BorderColor3 = FromRGB(0, 0, 0),
-                        Size = UDim2New(0, 50, 0, 50),
+                        Size = UDim2New(0, 54, 0, 54),
                         BorderSizePixel = 0,
-                        BackgroundTransparency = 0.5,
+                        BackgroundTransparency = 0.28,
                         ZIndex = 127,
                         BackgroundColor3 = Library.Theme.Background
                     })  Items["FloatingButton"]:AddToTheme({BackgroundColor3 = "Background"})
+
+                    Instances:Create("UIStroke", {
+                        Parent = Items["FloatingButton"].Instance,
+                        Name = "\0",
+                        Thickness = 1,
+                        Transparency = 0.45,
+                        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                        Color = FromRGB(90, 165, 255)
+                    }):AddToTheme({Color = "Accent"})
 
                     Items["FloatingLogo"] = Instances:Create("ImageLabel", {
                         Parent = Items["FloatingButton"].Instance,
@@ -2665,8 +2676,8 @@ local Library do
                         BackgroundTransparency = 1,
                         AnchorPoint = Vector2New(0.5, 0.5),
                         Position = UDim2New(0.5, 0, 0.5, 0),
-                        ZIndex = 127,
-                        Size = UDim2New(1, -25, 1, -25),
+                        ZIndex = 128,
+                        Size = UDim2New(1, -22, 1, -22),
                         BorderSizePixel = 0,
                         BackgroundColor3 = FromRGB(255, 255, 255)
                     })
@@ -2687,30 +2698,53 @@ local Library do
                         return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
                     end})
 
-                    Items["FloatingButton"]:MakeDraggable()
+                    Library.FloatingButtonWidget = Items["FloatingButton"]
 
-                    local floatDragStart, floatDidMove = nil, false
+                    local floatDragging = false
+                    local floatStartMouse = nil
+                    local floatStartPos = nil
+                    local floatMoved = false
+
                     Items["FloatingButton"]:Connect("InputBegan", function(Input)
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                            floatDragStart = Input.Position
-                            floatDidMove = false
+                            floatDragging = true
+                            floatMoved = false
+                            floatStartMouse = UserInputService:GetMouseLocation()
+                            floatStartPos = Vector2New(Items["FloatingButton"].Instance.Position.X.Offset, Items["FloatingButton"].Instance.Position.Y.Offset)
                         end
                     end)
-                    Library:Connect(UserInputService.InputChanged, function(Input)
-                        if floatDragStart and (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch) then
-                            if (Input.Position - floatDragStart).Magnitude > 10 then
-                                floatDidMove = true
-                            end
-                        end
-                    end)
-                    Items["FloatingButton"]:Connect("InputEnded", function(Input)
+
+                    Library:Connect(UserInputService.InputEnded, function(Input)
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                            if floatDragStart and not floatDidMove then
-                                Window:SetOpen(not Window.IsOpen)
+                            if floatDragging then
+                                if not floatMoved then
+                                    Window:SetOpen(not Window.IsOpen)
+                                end
                             end
-                            floatDragStart = nil
-                            floatDidMove = false
+                            floatDragging = false
+                            floatStartMouse = nil
+                            floatStartPos = nil
+                            floatMoved = false
                         end
+                    end)
+
+                    Library:Connect(RunService.RenderStepped, function()
+                        if not floatDragging or not floatStartMouse or not floatStartPos then
+                            return
+                        end
+                        local now = UserInputService:GetMouseLocation()
+                        local delta = Vector2New(now.X - floatStartMouse.X, now.Y - floatStartMouse.Y)
+                        if delta.Magnitude > 5 then
+                            floatMoved = true
+                        end
+                        local newX = floatStartPos.X + delta.X
+                        local newY = floatStartPos.Y + delta.Y
+                        local parent = Items["FloatingButton"].Instance.Parent
+                        local ps = parent.AbsoluteSize
+                        local sz = Items["FloatingButton"].Instance.AbsoluteSize
+                        newX = MathClamp(newX, 0, ps.X - sz.X)
+                        newY = MathClamp(newY, 0, ps.Y - sz.Y)
+                        Items["FloatingButton"].Instance.Position = UDim2FromOffset(newX, newY)
                     end)
                 end
 
@@ -2815,6 +2849,12 @@ local Library do
                     ClipsDescendants = true,
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["Content"]:AddToTheme({BackgroundColor3 = "Background"})
+
+                Instances:Create("UICorner", {
+                    Parent = Items["Content"].Instance,
+                    Name = "\0",
+                    CornerRadius = UDimNew(0, 12)
+                })
 
                 Items["CloseButton"] = Instances:Create("TextButton", {
                     Parent = Items["MainFrame"].Instance,
@@ -3056,8 +3096,12 @@ local Library do
                 function Window:SetTransparency()
                     Items["MainFrame"].Instance.BackgroundTransparency = Library.Flags["BackgroundTransparency"] 
                     Items["LeftTabs"].Instance.BackgroundTransparency = Library.Flags["BackgroundTransparency"]  
-                    if IsMobile then
-                        Items["FloatingButton"].Instance.BackgroundTransparency = Library.Flags["BackgroundTransparency"]  
+                    if Items["FloatingButton"] then
+                        local showFloat = Library.Flags["FloatingButtonVisible"] ~= false
+                        Items["FloatingButton"].Instance.Visible = showFloat
+                        if showFloat then
+                            Items["FloatingButton"].Instance.BackgroundTransparency = Library.Flags["BackgroundTransparency"]
+                        end
                     end
 
                     for _, Value in Items do 
@@ -3536,10 +3580,11 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  Items["Text"]:AddToTheme({TextColor3 = "Text"})      
                 
-                Items["Page"] = Instances:Create("Frame", {
+                Items["Page"] = Instances:Create("CanvasGroup", {
                     Parent = Library.UnusedHolder.Instance,
                     Name = "\0",
                     Visible = false,
+                    GroupTransparency = 1,
                     BackgroundTransparency = 1,
                     Size = UDim2New(1, 0, 1, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
@@ -3606,59 +3651,55 @@ local Library do
                 end
 
                 Page.Active = Bool 
-                
                 Debounce = true
-                Items["Page"].Instance.Visible = Bool 
-                Items["Page"].Instance.Parent = Bool and Page.Window.Items["Content"].Instance or Library.UnusedHolder.Instance
+
+                local tabFade = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
                 if Page.Active then
+                    Items["Page"].Instance.Visible = true
+                    Items["Page"].Instance.Parent = Page.Window.Items["Content"].Instance
+                    Items["Page"].Instance.GroupTransparency = 1
+                    Items["Page"].Instance.Position = UDim2New(0, 0, 0, 24)
+
                     Items["Inactive"]:Tween(nil, {BackgroundTransparency = 0.88})
                     Items["TabIndicator"]:Tween(nil, {BackgroundTransparency = 0})
-                    Items["Page"]:Tween(TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
 
                     for Index, Value in Page.Sections do 
                         task.spawn(function()
                             Value:TweenElements(true)
                         end)
                     end
+
+                    local NewTween = Tween:Create(Items["Page"].Instance, tabFade, {GroupTransparency = 0, Position = UDim2New(0, 0, 0, 0)}, true)
+                    if NewTween and NewTween.Tween then
+                        Library:Connect(NewTween.Tween.Completed, function()
+                            Debounce = false
+                        end)
+                    else
+                        Debounce = false
+                    end
                 else
                     Items["Inactive"]:Tween(nil, {BackgroundTransparency = 1})
                     Items["TabIndicator"]:Tween(nil, {BackgroundTransparency = 1})
-                    Items["Page"]:Tween(TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 60)})
-                end
 
-                local AllInstances = Items["Page"].Instance:GetDescendants()
-                TableInsert(AllInstances, Items["Page"].Instance)
-                
-                local NewTween 
-
-                for Index, Value in AllInstances do 
-                    local TransparencyProperty = Tween:GetProperty(Value)
-
-                    if not TransparencyProperty then 
-                        continue
-                    end
-
-                    if type(TransparencyProperty) == "table" then 
-                        for _, Property in TransparencyProperty do 
-                            NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
-                        end
+                    local NewTween = Tween:Create(Items["Page"].Instance, tabFade, {GroupTransparency = 1, Position = UDim2New(0, 0, 0, 40)}, true)
+                    if NewTween and NewTween.Tween then
+                        Library:Connect(NewTween.Tween.Completed, function()
+                            Items["Page"].Instance.Visible = false
+                            Items["Page"].Instance.Parent = Library.UnusedHolder.Instance
+                            for Index, Value in Page.Sections do 
+                                task.spawn(function()
+                                    Value:TweenElements(false, true)
+                                end)   
+                            end
+                            Debounce = false
+                        end)
                     else
-                        NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
+                        Items["Page"].Instance.Visible = false
+                        Items["Page"].Instance.Parent = Library.UnusedHolder.Instance
+                        Debounce = false
                     end
                 end
-
-                Library:Connect(NewTween.Tween.Completed, function()
-                    Debounce = false
-
-                    if not Page.Active then 
-                        for Index, Value in Page.Sections do 
-                            task.spawn(function()
-                                Value:TweenElements(false, true)
-                            end)   
-                        end
-                    end
-                end)
             end
 
             Items["Inactive"]:Connect("MouseButton1Down", function()
@@ -3796,10 +3837,11 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  DashItems["Text"]:AddToTheme({TextColor3 = "Text"})
 
-                DashItems["Page"] = Instances:Create("Frame", {
+                DashItems["Page"] = Instances:Create("CanvasGroup", {
                     Parent = Library.UnusedHolder.Instance,
                     Name = "\0",
                     Visible = false,
+                    GroupTransparency = 1,
                     BackgroundTransparency = 1,
                     Size = UDim2New(1, 0, 1, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
@@ -4419,41 +4461,41 @@ local Library do
                 DashPage.Active = Bool
                 DashDebounce = true
 
-                DashItems["Page"].Instance.Visible = Bool
-                DashItems["Page"].Instance.Parent = Bool and DashPage.Window.Items["Content"].Instance or Library.UnusedHolder.Instance
+                local dti = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
                 if Bool then
+                    DashItems["Page"].Instance.Visible = true
+                    DashItems["Page"].Instance.Parent = DashPage.Window.Items["Content"].Instance
+                    DashItems["Page"].Instance.GroupTransparency = 1
+                    DashItems["Page"].Instance.Position = UDim2New(0, 0, 0, 24)
+
                     DashItems["Inactive"]:Tween(nil, {BackgroundTransparency = 0.88})
                     DashItems["TabIndicator"]:Tween(nil, {BackgroundTransparency = 0})
-                    DashItems["Page"]:Tween(TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
+
+                    local NewTween = Tween:Create(DashItems["Page"].Instance, dti, {GroupTransparency = 0, Position = UDim2New(0, 0, 0, 0)}, true)
+                    if NewTween and NewTween.Tween then
+                        Library:Connect(NewTween.Tween.Completed, function()
+                            DashDebounce = false
+                        end)
+                    else
+                        DashDebounce = false
+                    end
                 else
                     DashItems["Inactive"]:Tween(nil, {BackgroundTransparency = 1})
                     DashItems["TabIndicator"]:Tween(nil, {BackgroundTransparency = 1})
-                    DashItems["Page"]:Tween(TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 60)})
-                end
 
-                local AllInstances = DashItems["Page"].Instance:GetDescendants()
-                TableInsert(AllInstances, DashItems["Page"].Instance)
-                local NewTween
-
-                for _, Value in AllInstances do
-                    local TransparencyProperty = Tween:GetProperty(Value)
-                    if not TransparencyProperty then continue end
-                    if type(TransparencyProperty) == "table" then
-                        for _, Property in TransparencyProperty do
-                            NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
-                        end
+                    local NewTween = Tween:Create(DashItems["Page"].Instance, dti, {GroupTransparency = 1, Position = UDim2New(0, 0, 0, 40)}, true)
+                    if NewTween and NewTween.Tween then
+                        Library:Connect(NewTween.Tween.Completed, function()
+                            DashItems["Page"].Instance.Visible = false
+                            DashItems["Page"].Instance.Parent = Library.UnusedHolder.Instance
+                            DashDebounce = false
+                        end)
                     else
-                        NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
-                    end
-                end
-
-                if NewTween then
-                    Library:Connect(NewTween.Tween.Completed, function()
+                        DashItems["Page"].Instance.Visible = false
+                        DashItems["Page"].Instance.Parent = Library.UnusedHolder.Instance
                         DashDebounce = false
-                    end)
-                else
-                    DashDebounce = false
+                    end
                 end
             end
 
@@ -8394,7 +8436,7 @@ local Library do
                 Flag = "DPIScale",
                 Min = 50,
                 Max = 200,
-                Default = IsMobile and 100 or 120,
+                Default = 100,
                 Suffix = "%",
                 Callback = function(Value)
                     Library:SetDPIScale(Value)
@@ -8403,11 +8445,23 @@ local Library do
 
             task.defer(function()
                 pcall(function()
-                    Library:SetDPIScale(Library.Flags.DPIScale or (IsMobile and 100 or 120))
+                    Library:SetDPIScale(Library.Flags.DPIScale or 100)
                 end)
             end)
 
             UISection:Divider()
+
+            UISection:Toggle({
+                Name = "Show Floating Toggle Button",
+                Flag = "FloatingButtonVisible",
+                Default = true,
+                Tooltip = "Shows the round logo button used to open or close the UI.",
+                Callback = function(v)
+                    if Library.FloatingButtonWidget and Library.FloatingButtonWidget.Instance then
+                        Library.FloatingButtonWidget.Instance.Visible = v
+                    end
+                end
+            })
 
             UISection:Toggle({
                 Name = "Custom Cursor",
@@ -8418,6 +8472,17 @@ local Library do
                     Library:SetCustomCursor(v)
                 end
             })
+
+            task.defer(function()
+                pcall(function()
+                    if Library.Flags.CustomCursorEnabled then
+                        Library:SetCustomCursor(true)
+                    end
+                    if Library.FloatingButtonWidget and Library.FloatingButtonWidget.Instance then
+                        Library.FloatingButtonWidget.Instance.Visible = Library.Flags.FloatingButtonVisible ~= false
+                    end
+                end)
+            end)
         end
 
         local KeybindSection = Page:Section({Name = "Keybinds", Icon = "keyboard", Side = 1}) do
@@ -8540,14 +8605,24 @@ local Library do
     end
 
     do
+        local cursorScreen = Instance.new("ScreenGui")
+        cursorScreen.Name = "\0MentalityCursor"
+        cursorScreen.IgnoreGuiInset = true
+        cursorScreen.DisplayOrder = 2147483647
+        cursorScreen.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        cursorScreen.ResetOnSpawn = false
+        cursorScreen.Enabled = true
+        cursorScreen.Parent = gethui()
+        Library.CursorScreenGui = cursorScreen
+
         local cursorRoot = Instance.new("Frame")
         cursorRoot.Name = "\0"
         cursorRoot.BackgroundTransparency = 1
         cursorRoot.BorderSizePixel = 0
-        cursorRoot.Size = UDim2New(0, 18, 0, 18)
-        cursorRoot.ZIndex = 100000
+        cursorRoot.Size = UDim2New(0, 20, 0, 20)
+        cursorRoot.ZIndex = 2147483647
         cursorRoot.Visible = false
-        cursorRoot.Parent = Library.Holder.Instance
+        cursorRoot.Parent = cursorScreen
 
         local img = Instance.new("ImageLabel")
         img.Name = "\0"
@@ -8562,15 +8637,19 @@ local Library do
         local CursorConn = RunService.RenderStepped:Connect(function()
             if not cursorRoot.Visible then return end
             local loc = UserInputService:GetMouseLocation()
-            cursorRoot.Position = UDim2New(0, loc.X - 1, 0, loc.Y - 56)
+            local ox, oy = 10, 10
+            cursorRoot.Position = UDim2New(0, loc.X - ox, 0, loc.Y - oy)
         end)
 
         Library.CursorGui = cursorRoot
         Library.CursorConn = CursorConn
 
         Library.SetCustomCursor = function(self, enabled)
-            cursorRoot.Visible = enabled
-            pcall(function() UserInputService.MouseIconEnabled = not enabled end)
+            local on = enabled == true
+            cursorRoot.Visible = on
+            pcall(function()
+                UserInputService.MouseIconEnabled = not on
+            end)
         end
     end
 end
