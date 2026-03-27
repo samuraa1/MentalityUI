@@ -8361,39 +8361,39 @@ local Library do
             s.Scale = factor
         end)
     end
-end
 
-do
-    local CursorGui = Instances:Create("ScreenGui", {
-        Parent = gethui(),
-        Name = "\0",
-        ZIndexBehavior = Enum.ZIndexBehavior.Global,
-        DisplayOrder = 999,
-        ResetOnSpawn = false
-    })
+    do
+        local CursorGui = Instances:Create("ScreenGui", {
+            Parent = gethui(),
+            Name = "\0",
+            ZIndexBehavior = Enum.ZIndexBehavior.Global,
+            DisplayOrder = 999,
+            ResetOnSpawn = false
+        })
 
-    local CursorFrame = Instances:Create("ImageLabel", {
-        Parent = CursorGui.Instance,
-        Name = "\0",
-        BackgroundTransparency = 1,
-        Size = UDim2New(0, 20, 0, 20),
-        ZIndex = 9999,
-        BorderSizePixel = 0,
-        Image = "rbxassetid://14149837042",
-        ImageColor3 = FromRGB(70, 150, 255)
-    })
+        local CursorFrame = Instances:Create("ImageLabel", {
+            Parent = CursorGui.Instance,
+            Name = "\0",
+            BackgroundTransparency = 1,
+            Size = UDim2New(0, 20, 0, 20),
+            ZIndex = 9999,
+            BorderSizePixel = 0,
+            Image = "rbxassetid://14149837042",
+            ImageColor3 = FromRGB(70, 150, 255)
+        })
 
-    pcall(function() UserInputService.MouseIconEnabled = false end)
+        pcall(function() UserInputService.MouseIconEnabled = false end)
 
-    local CursorConn = RunService.RenderStepped:Connect(function()
-        local ok, pos = pcall(UserInputService.GetMouseLocation, UserInputService)
-        if ok and pos then
-            CursorFrame.Instance.Position = UDim2New(0, pos.X, 0, pos.Y)
-        end
-    end)
+        local CursorConn = RunService.RenderStepped:Connect(function()
+            local ok, pos = pcall(UserInputService.GetMouseLocation, UserInputService)
+            if ok and pos then
+                CursorFrame.Instance.Position = UDim2New(0, pos.X, 0, pos.Y)
+            end
+        end)
 
-    Library.CursorGui = CursorGui
-    Library.CursorConn = CursorConn
+        Library.CursorGui = CursorGui
+        Library.CursorConn = CursorConn
+    end
 end
 
 getgenv().Library = Library
