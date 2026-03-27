@@ -38,6 +38,7 @@ local Library do
     local Vector3New = Vector3.new
 
     local MathClamp = math.clamp
+    local MathMax = math.max
     local MathFloor = math.floor
     local MathAbs = math.abs
     local MathSin = math.sin
@@ -970,36 +971,47 @@ local Library do
         return Success, Result
     end
 
+    Library.ConfigDisplayToFile = function(self, name)
+        if not name or name == "" then return nil end
+        name = tostring(name):gsub("^%s+", ""):gsub("%s+$", "")
+        if name == "" then return nil end
+        if StringLower(name:sub(-5)) == ".json" then
+            return name
+        end
+        return name .. ".json"
+    end
+
     Library.DeleteConfig = function(self, Config)
-        if isfile(Library.Folders.Configs .. "/" .. Config) then 
-            delfile(Library.Folders.Configs .. "/" .. Config)
+        local fn = Library:ConfigDisplayToFile(Config)
+        if not fn then return end
+        local p = Library.Folders.Configs .. "/" .. fn
+        if isfile(p) then
+            delfile(p)
         end
     end
 
     Library.RefreshConfigsList = function(self, Element)
-        local CurrentList = { }
-        local List = { }
-
-        local ConfigFolderName = StringGSub(Library.Folders.Configs, Library.Folders.Directory .. "/", "")
-
-        for Index, Value in listfiles(Library.Folders.Configs) do
-            local FileName = StringGSub(Value, Library.Folders.Directory .. "\\" .. ConfigFolderName .. "\\", "")
-            List[Index] = FileName
+        if not Element or not Element.Refresh then return end
+        local List = {}
+        if not isfolder(Library.Folders.Configs) then
+            pcall(function() makefolder(Library.Folders.Configs) end)
         end
-
-        local IsNew = #List ~= CurrentList
-
-        if not IsNew then
-            for Index = 1, #List do
-                if List[Index] ~= CurrentList[Index] then
-                    IsNew = true
-                    break
+        local ok, files = pcall(function()
+            return listfiles(Library.Folders.Configs)
+        end)
+        if ok and files then
+            for _, path in ipairs(files) do
+                local base = string.match(path, "([^/\\]+)$")
+                if base and StringLower(base:sub(-5)) == ".json" then
+                    local disp = base:sub(1, -6)
+                    if disp ~= "" then
+                        TableInsert(List, disp)
+                    end
                 end
             end
-        else
-            CurrentList = List
-            Element:Refresh(CurrentList)
         end
+        table.sort(List)
+        Element:Refresh(List)
     end
 
     Library.ChangeItemTheme = function(self, Item, Properties)
@@ -2392,13 +2404,14 @@ local Library do
                     return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
                 end})
                 
+                local iconId = Data.Icon or "97594400820219"
                 Items["Icon"] = Instances:Create("ImageLabel", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
                     ImageColor3 = FromRGB(255, 255, 255),
                     BorderColor3 = FromRGB(0, 0, 0),
                     AnchorPoint = Vector2New(1, 0),
-                    Image = "rbxassetid://"..Data.Icon,
+                    Image = "rbxassetid://"..tostring(iconId),
                     BackgroundTransparency = 1,
                     Position = UDim2New(1, 0, 0, 0),
                     Size = UDim2New(0, 16, 0, 16),
@@ -2441,9 +2454,11 @@ local Library do
                 Items["Icon"]:Tween(fadeInfo, {ImageTransparency = 0})
                 Items["Notification"]:Tween(fadeInfo, {BackgroundTransparency = 0.35})
                 Items["Accent"]:Tween(fadeInfo, {BackgroundTransparency = 0})
-                Items["Accent"]:Tween(TweenInfo.new(Data.Duration or 3, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(1, 0, 0, 6)})
+                local barTime = 0.45
+                Items["Accent"]:Tween(TweenInfo.new(barTime, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(1, 0, 0, 6)})
 
-                task.wait((Data.Duration or 3) + 0.5)
+                local hold = math.clamp(tonumber(Data.Duration) or 3, 0.5, 30)
+                task.wait(hold + 0.35)
 
                 Items["Title"]:Tween(fadeInfo, {TextTransparency = 1})
                 Items["Description"]:Tween(fadeInfo, {TextTransparency = 1})
@@ -2469,7 +2484,9 @@ local Library do
                 Pages = { },
                 Items = { },
                 IsOpen = false,
-                CurrentAlignment = "LeftTabs"
+                CurrentAlignment = "LeftTabs",
+                TabSwitchCooldownSec = 2,
+                _tabCooldownUntil = 0
             }
 
             local Items = { } do
@@ -2480,7 +2497,7 @@ local Library do
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
                     Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
-                    Size = IsMobile and UDim2New(0, 620, 0, 500) or UDim2New(0, 740, 0, 644),
+                    Size = IsMobile and UDim2New(0, 620, 0, 500) or UDim2New(0, 820, 0, 644),
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
@@ -2701,16 +2718,14 @@ local Library do
                     Library.FloatingButtonWidget = Items["FloatingButton"]
 
                     local floatDragging = false
-                    local floatStartMouse = nil
-                    local floatStartPos = nil
+                    local floatLastMouse = nil
                     local floatMoved = false
 
                     Items["FloatingButton"]:Connect("InputBegan", function(Input)
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                             floatDragging = true
                             floatMoved = false
-                            floatStartMouse = UserInputService:GetMouseLocation()
-                            floatStartPos = Vector2New(Items["FloatingButton"].Instance.Position.X.Offset, Items["FloatingButton"].Instance.Position.Y.Offset)
+                            floatLastMouse = UserInputService:GetMouseLocation()
                         end
                     end)
 
@@ -2722,28 +2737,29 @@ local Library do
                                 end
                             end
                             floatDragging = false
-                            floatStartMouse = nil
-                            floatStartPos = nil
+                            floatLastMouse = nil
                             floatMoved = false
                         end
                     end)
 
                     Library:Connect(RunService.RenderStepped, function()
-                        if not floatDragging or not floatStartMouse or not floatStartPos then
+                        if not floatDragging or not floatLastMouse then
                             return
                         end
                         local now = UserInputService:GetMouseLocation()
-                        local delta = Vector2New(now.X - floatStartMouse.X, now.Y - floatStartMouse.Y)
-                        if delta.Magnitude > 5 then
+                        local delta = Vector2New(now.X - floatLastMouse.X, now.Y - floatLastMouse.Y)
+                        floatLastMouse = now
+                        if delta.Magnitude > 2 then
                             floatMoved = true
                         end
-                        local newX = floatStartPos.X + delta.X
-                        local newY = floatStartPos.Y + delta.Y
+                        local pos = Items["FloatingButton"].Instance.Position
+                        local newX = pos.X.Offset + delta.X
+                        local newY = pos.Y.Offset + delta.Y
                         local parent = Items["FloatingButton"].Instance.Parent
                         local ps = parent.AbsoluteSize
                         local sz = Items["FloatingButton"].Instance.AbsoluteSize
-                        newX = MathClamp(newX, 0, ps.X - sz.X)
-                        newY = MathClamp(newY, 0, ps.Y - sz.Y)
+                        newX = MathClamp(newX, 0, MathMax(0, ps.X - sz.X))
+                        newY = MathClamp(newY, 0, MathMax(0, ps.Y - sz.Y))
                         Items["FloatingButton"].Instance.Position = UDim2FromOffset(newX, newY)
                     end)
                 end
@@ -3013,6 +3029,7 @@ local Library do
                         BorderColor3 = FromRGB(0, 0, 0),
                         AnchorPoint = Vector2New(1, 0),
                         BackgroundTransparency = 1,
+                        Visible = false,
                         Position = UDim2New(0, 1, 0, 0),
                         Size = UDim2New(0, 5, 0, 5),
                         ZIndex = 2,
@@ -3653,27 +3670,35 @@ local Library do
                 Page.Active = Bool 
                 Debounce = true
 
-                local tabFade = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+                local tabFade = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
                 if Page.Active then
                     Items["Page"].Instance.Visible = true
                     Items["Page"].Instance.Parent = Page.Window.Items["Content"].Instance
                     Items["Page"].Instance.GroupTransparency = 1
-                    Items["Page"].Instance.Position = UDim2New(0, 0, 0, 24)
+                    Items["Page"].Instance.Position = UDim2New(0, 0, 0, 28)
 
                     Items["Inactive"]:Tween(nil, {BackgroundTransparency = 0.88})
                     Items["TabIndicator"]:Tween(nil, {BackgroundTransparency = 0})
 
-                    for Index, Value in Page.Sections do 
+                    for _, Sec in Page.Sections do
                         task.spawn(function()
-                            Value:TweenElements(true)
+                            Sec:TweenElements(false, true)
                         end)
                     end
 
                     local NewTween = Tween:Create(Items["Page"].Instance, tabFade, {GroupTransparency = 0, Position = UDim2New(0, 0, 0, 0)}, true)
                     if NewTween and NewTween.Tween then
                         Library:Connect(NewTween.Tween.Completed, function()
-                            Debounce = false
+                            Library:Thread(function()
+                                for _, Value in Page.Sections do
+                                    task.spawn(function()
+                                        Value:TweenElements(true)
+                                    end)
+                                    task.wait(0.055)
+                                end
+                                Debounce = false
+                            end)
                         end)
                     else
                         Debounce = false
@@ -3682,7 +3707,7 @@ local Library do
                     Items["Inactive"]:Tween(nil, {BackgroundTransparency = 1})
                     Items["TabIndicator"]:Tween(nil, {BackgroundTransparency = 1})
 
-                    local NewTween = Tween:Create(Items["Page"].Instance, tabFade, {GroupTransparency = 1, Position = UDim2New(0, 0, 0, 40)}, true)
+                    local NewTween = Tween:Create(Items["Page"].Instance, tabFade, {GroupTransparency = 1, Position = UDim2New(0, 0, 0, 36)}, true)
                     if NewTween and NewTween.Tween then
                         Library:Connect(NewTween.Tween.Completed, function()
                             Items["Page"].Instance.Visible = false
@@ -3703,6 +3728,11 @@ local Library do
             end
 
             Items["Inactive"]:Connect("MouseButton1Down", function()
+                local W = Page.Window
+                local now = tick()
+                if now < (W._tabCooldownUntil or 0) then
+                    return
+                end
                 for Index, Value in Page.Window.Pages do 
                     if Value == Page and Page.Active then
                         return
@@ -3710,6 +3740,7 @@ local Library do
 
                     Value:Turn(Value == Page)
                 end
+                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 2)
             end)
 
             if #Page.Window.Pages == 0 then 
@@ -4436,9 +4467,13 @@ local Library do
 
                     card:Connect("MouseButton1Down", function()
                         if type(CardData.Tab) == "table" and CardData.Tab.Turn then
+                            local W = DashPage.Window
+                            local now = tick()
+                            if now < (W._tabCooldownUntil or 0) then return end
                             for _, P in DashPage.Window.Pages do
                                 P:Turn(P == CardData.Tab)
                             end
+                            W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 2)
                         elseif type(CardData.Callback) == "function" then
                             Library:SafeCall(CardData.Callback)
                         end
@@ -4461,13 +4496,13 @@ local Library do
                 DashPage.Active = Bool
                 DashDebounce = true
 
-                local dti = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+                local dti = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
                 if Bool then
                     DashItems["Page"].Instance.Visible = true
                     DashItems["Page"].Instance.Parent = DashPage.Window.Items["Content"].Instance
                     DashItems["Page"].Instance.GroupTransparency = 1
-                    DashItems["Page"].Instance.Position = UDim2New(0, 0, 0, 24)
+                    DashItems["Page"].Instance.Position = UDim2New(0, 0, 0, 28)
 
                     DashItems["Inactive"]:Tween(nil, {BackgroundTransparency = 0.88})
                     DashItems["TabIndicator"]:Tween(nil, {BackgroundTransparency = 0})
@@ -4484,7 +4519,7 @@ local Library do
                     DashItems["Inactive"]:Tween(nil, {BackgroundTransparency = 1})
                     DashItems["TabIndicator"]:Tween(nil, {BackgroundTransparency = 1})
 
-                    local NewTween = Tween:Create(DashItems["Page"].Instance, dti, {GroupTransparency = 1, Position = UDim2New(0, 0, 0, 40)}, true)
+                    local NewTween = Tween:Create(DashItems["Page"].Instance, dti, {GroupTransparency = 1, Position = UDim2New(0, 0, 0, 36)}, true)
                     if NewTween and NewTween.Tween then
                         Library:Connect(NewTween.Tween.Completed, function()
                             DashItems["Page"].Instance.Visible = false
@@ -4526,10 +4561,14 @@ local Library do
             end
 
             DashItems["Inactive"]:Connect("MouseButton1Down", function()
+                local W = DashPage.Window
+                local now = tick()
+                if now < (W._tabCooldownUntil or 0) then return end
                 for _, Value in DashPage.Window.Pages do
                     if Value == DashPage and DashPage.Active then return end
                     Value:Turn(Value == DashPage)
                 end
+                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 2)
             end)
 
             if #DashPage.Window.Pages == 0 then
@@ -8542,11 +8581,11 @@ local Library do
             ConfigsSection:Button({
                 Name = "Create",
                 Callback = function()
-                    if ConfigName and ConfigName ~= "" then
-                        if not isfile(Library.Folders.Configs .. "/" .. ConfigName .. ".json") then
-                            writefile(Library.Folders.Configs .. "/" .. ConfigName .. ".json", Library:GetConfig())
-                            Library:RefreshConfigsList(ConfigsDropdown)
-                        end
+                    local raw = ConfigName or (Library.Flags and Library.Flags.ConfigsName)
+                    local fn = Library:ConfigDisplayToFile(raw)
+                    if fn and not isfile(Library.Folders.Configs .. "/" .. fn) then
+                        writefile(Library.Folders.Configs .. "/" .. fn, Library:GetConfig())
+                        Library:RefreshConfigsList(ConfigsDropdown)
                     end
                 end
             })
@@ -8564,8 +8603,10 @@ local Library do
             ConfigsSection:Button({
                 Name = "Load",
                 Callback = function()
-                    if ConfigSelected then
-                        Library:LoadConfig(readfile(Library.Folders.Configs .. "/" .. ConfigSelected))
+                    if not ConfigSelected then return end
+                    local fn = Library:ConfigDisplayToFile(ConfigSelected)
+                    if fn and isfile(Library.Folders.Configs .. "/" .. fn) then
+                        Library:LoadConfig(readfile(Library.Folders.Configs .. "/" .. fn))
                     end
                 end
             })
@@ -8573,8 +8614,11 @@ local Library do
             ConfigsSection:Button({
                 Name = "Save",
                 Callback = function()
-                    if ConfigSelected then
-                        writefile(Library.Folders.Configs .. "/" .. ConfigSelected, Library:GetConfig())
+                    if not ConfigSelected then return end
+                    local fn = Library:ConfigDisplayToFile(ConfigSelected)
+                    if fn then
+                        writefile(Library.Folders.Configs .. "/" .. fn, Library:GetConfig())
+                        Library:RefreshConfigsList(ConfigsDropdown)
                     end
                 end
             })
@@ -8585,22 +8629,35 @@ local Library do
                     Library:RefreshConfigsList(ConfigsDropdown)
                 end
             })
+
+            task.defer(function()
+                Library:RefreshConfigsList(ConfigsDropdown)
+            end)
         end
 
         return Page
     end
 
     Library.SetDPIScale = function(self, Scale)
-        local factor = (Scale or 100) / 100
+        local factor = math.clamp((Scale or 100) / 100, 0.5, 2)
         pcall(function()
             local mainFrame = Library.MainFrame and Library.MainFrame.Instance
             if not mainFrame then return end
+            local ap = mainFrame.AbsolutePosition
+            local as = mainFrame.AbsoluteSize
+            local cx = ap.X + as.X * 0.5
+            local cy = ap.Y + as.Y * 0.5
             local s = mainFrame:FindFirstChildOfClass("UIScale")
             if not s then
                 s = Instance.new("UIScale")
                 s.Parent = mainFrame
             end
             s.Scale = factor
+            task.defer(function()
+                if not mainFrame.Parent then return end
+                local nas = mainFrame.AbsoluteSize
+                mainFrame.Position = UDim2FromOffset(cx - nas.X * 0.5, cy - nas.Y * 0.5)
+            end)
         end)
     end
 
@@ -8611,7 +8668,7 @@ local Library do
         cursorScreen.DisplayOrder = 2147483647
         cursorScreen.ZIndexBehavior = Enum.ZIndexBehavior.Global
         cursorScreen.ResetOnSpawn = false
-        cursorScreen.Enabled = true
+        cursorScreen.Enabled = false
         cursorScreen.Parent = gethui()
         Library.CursorScreenGui = cursorScreen
 
@@ -8632,6 +8689,7 @@ local Library do
         img.Image = "rbxassetid://132511743665753"
         img.ImageColor3 = FromRGB(90, 165, 255)
         img.ScaleType = Enum.ScaleType.Fit
+        img.Rotation = 90
         img.Parent = cursorRoot
 
         local CursorConn = RunService.RenderStepped:Connect(function()
@@ -8647,6 +8705,7 @@ local Library do
         Library.SetCustomCursor = function(self, enabled)
             local on = enabled == true
             cursorRoot.Visible = on
+            cursorScreen.Enabled = on
             pcall(function()
                 UserInputService.MouseIconEnabled = not on
             end)
