@@ -388,13 +388,8 @@ local Library do
                 return
             end
 
-            if IsMobile then
-                if Event == "MouseButton1Down" or Event == "MouseButton1Click" then 
-                    Event = "TouchTap"
-                elseif Event == "MouseButton2Down" or Event == "MouseButton2Click" then 
-                    Event = "TouchLongPress"
-                end
-            end
+            -- Do not remap to TouchTap: GuiButton MouseButton1* already receives touch on mobile;
+            -- TouchTap mapping broke taps on TextButtons inside ScrollingFrames and many controls.
 
             return Library:Connect(self.Instance[Event], Callback, Name)
         end
@@ -2485,7 +2480,7 @@ local Library do
                 Items = { },
                 IsOpen = false,
                 CurrentAlignment = "LeftTabs",
-                TabSwitchCooldownSec = 1,
+                TabSwitchCooldownSec = 0.5,
                 _tabCooldownUntil = 0
             }
 
@@ -2622,6 +2617,7 @@ local Library do
                     ScrollBarThickness = 5,
                     ScrollBarImageColor3 = FromRGB(90, 165, 255),
                     ScrollingEnabled = true,
+                    ScrollingElasticBehavior = Enum.ElasticBehavior.Never,
                     Active = true,
                     ClipsDescendants = true,
                     ZIndex = 3,
@@ -2765,21 +2761,24 @@ local Library do
                         if not floatDragging or not floatLastMouse then
                             return
                         end
+                        local inst = Items["FloatingButton"].Instance
+                        local parent = inst.Parent
+                        if not parent then return end
                         local now = UserInputService:GetMouseLocation()
                         local delta = Vector2New(now.X - floatLastMouse.X, now.Y - floatLastMouse.Y)
                         floatLastMouse = now
                         if delta.Magnitude > 2 then
                             floatMoved = true
                         end
-                        local pos = Items["FloatingButton"].Instance.Position
-                        local newX = pos.X.Offset + delta.X
-                        local newY = pos.Y.Offset + delta.Y
-                        local parent = Items["FloatingButton"].Instance.Parent
-                        local ps = parent.AbsoluteSize
-                        local sz = Items["FloatingButton"].Instance.AbsoluteSize
-                        newX = MathClamp(newX, 0, MathMax(0, ps.X - sz.X))
-                        newY = MathClamp(newY, 0, MathMax(0, ps.Y - sz.Y))
-                        Items["FloatingButton"].Instance.Position = UDim2FromOffset(newX, newY)
+                        local ap = inst.AbsolutePosition
+                        local psz = parent.AbsoluteSize
+                        local sz = inst.AbsoluteSize
+                        local p0 = parent.AbsolutePosition
+                        local newAbsX = ap.X + delta.X
+                        local newAbsY = ap.Y + delta.Y
+                        newAbsX = MathClamp(newAbsX, p0.X, p0.X + MathMax(0, psz.X - sz.X))
+                        newAbsY = MathClamp(newAbsY, p0.Y, p0.Y + MathMax(0, psz.Y - sz.Y))
+                        inst.Position = UDim2FromOffset(newAbsX - p0.X, newAbsY - p0.Y)
                     end)
                 end
 
@@ -3501,15 +3500,23 @@ local Library do
 
         Library.TabDivider = function(self)
             local Win = self
-            Instances:Create("Frame", {
+            local div = Instances:Create("Frame", {
                 Parent = Win.Items["LeftTabsScroll"].Instance,
                 Name = "\0",
-                BackgroundColor3 = FromRGB(38, 36, 46),
-                Size = UDim2New(1, -24, 0, 1),
+                BackgroundColor3 = FromRGB(70, 68, 82),
+                Size = UDim2New(1, -20, 0, 2),
                 BorderSizePixel = 0,
-                BackgroundTransparency = 0,
+                BackgroundTransparency = 0.15,
                 ZIndex = 2
-            }):AddToTheme({BackgroundColor3 = "Element"})
+            })
+            div:AddToTheme({BackgroundColor3 = "Element"})
+            Instances:Create("UIStroke", {
+                Parent = div.Instance,
+                Name = "\0",
+                Thickness = 1,
+                Transparency = 0.45,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            }):AddToTheme({Color = "Accent"})
         end
 
         Library.Page = function(self, Data)
@@ -3778,7 +3785,7 @@ local Library do
                     end
                 end
                 Page:Turn(true)
-                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 1)
+                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 0.5)
             end)
 
             if #Page.Window.Pages == 0 then 
@@ -4052,6 +4059,24 @@ local Library do
                         BackgroundColor3 = FromRGB(30, 28, 38)
                     })  linkBtn:AddToTheme({BackgroundColor3 = "Element"})
 
+                    local linkHoverRing = Instances:Create("Frame", {
+                        Parent = linkBtn.Instance,
+                        Name = "\0",
+                        AnchorPoint = Vector2New(0.5, 0.5),
+                        Position = UDim2New(0.5, 0, 0.5, 0),
+                        Size = UDim2New(1, 8, 1, 8),
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                        ZIndex = 1,
+                        BackgroundColor3 = FromRGB(100, 149, 255)
+                    })
+                    linkHoverRing:AddToTheme({BackgroundColor3 = "Accent"})
+                    Instances:Create("UICorner", {
+                        Parent = linkHoverRing.Instance,
+                        Name = "\0",
+                        CornerRadius = UDimNew(1, 0)
+                    })
+
                     Instances:Create("UICorner", {
                         Parent = linkBtn.Instance,
                         Name = "\0",
@@ -4089,9 +4114,11 @@ local Library do
                     end)
                     linkBtn:OnHover(function()
                         linkBtn:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0})
+                        linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.55})
                     end)
                     linkBtn:OnHoverLeave(function()
                         linkBtn:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.1})
+                        linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 1})
                     end)
                     if link.Tooltip then
                         Library:AttachTooltip(linkBtn.Instance, link.Tooltip)
@@ -4518,7 +4545,7 @@ local Library do
                                 end
                             end
                             target:Turn(true)
-                            W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 1)
+                            W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 0.5)
                         elseif type(CardData.Callback) == "function" then
                             Library:SafeCall(CardData.Callback)
                         end
@@ -4628,7 +4655,7 @@ local Library do
                     end
                 end
                 DashPage:Turn(true)
-                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 1)
+                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 0.5)
             end)
 
             if #DashPage.Window.Pages == 0 then
@@ -7684,7 +7711,7 @@ local Library do
                     local RealKey = Key.Key == "Backspace" and "None" or Key.Key
                     Keybind.Key = tostring(Key.Key)
 
-                    if Key.ModeSelected then
+                    if Key.Mode then
                         Keybind.ModeSelected = Key.Mode
                         Keybind:SetMode(Key.Mode, SkipCallback)
                     else
@@ -7834,7 +7861,7 @@ local Library do
             end
 
             Library.SetFlags[Keybind.Flag] = function(Value)
-                Keybind:Set(Value)
+                Keybind:Set(Value, true)
             end
 
             if Data.Tooltip or Data.tooltip then
@@ -8753,7 +8780,7 @@ local Library do
         img.Image = "rbxassetid://132511743665753"
         img.ImageColor3 = FromRGB(90, 165, 255)
         img.ScaleType = Enum.ScaleType.Fit
-        img.Rotation = 0
+        img.Rotation = -90
         img.AnchorPoint = Vector2New(0, 0)
         img.Position = UDim2New(0, 0, 0, 0)
         img.Parent = cursorRoot
@@ -8761,7 +8788,7 @@ local Library do
         local CursorConn = RunService.RenderStepped:Connect(function()
             if not cursorRoot.Visible then return end
             local loc = UserInputService:GetMouseLocation()
-            local ox, oy = 4, 4
+            local ox, oy = 2, 2
             cursorRoot.Position = UDim2New(0, loc.X - ox, 0, loc.Y - oy)
         end)
 
