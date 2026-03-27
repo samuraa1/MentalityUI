@@ -17,7 +17,7 @@ local Library = {} do
 
 	local New          = Instance.new
 	local V2           = Vector2.new
-	local U2           = UDim2.new
+	local U2           = UDim2
 	local U            = UDim.new
 	local RGB          = Color3.fromRGB
 	local HSV          = Color3.fromHSV
@@ -228,9 +228,11 @@ local Library = {} do
 	end
 
 	local function tw(inst, props, time, style, dir)
+		if not inst or not inst.Parent then return end
 		time = time or 0.18
 		local info = TI(time, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out)
-		TS:Create(inst, info, props):Play()
+		local ok, tween = pcall(TS.Create, TS, inst, info, props)
+		if ok and tween then tween:Play() end
 	end
 
 	local function connect(evt, cb)
@@ -241,9 +243,11 @@ local Library = {} do
 
 	local function make(class, props)
 		local i = New(class)
+		local parent
 		for k, v in props do
-			i[k] = v
+			if k == "Parent" then parent = v else i[k] = v end
 		end
+		if parent then i.Parent = parent end
 		return i
 	end
 
@@ -268,13 +272,18 @@ local Library = {} do
 			return
 		end
 		if not isfile(ttfPath) then
-			writefile(ttfPath, game:HttpGet("https://github.com/sametexe001/luas/raw/refs/heads/main/fonts/InterSemibold.ttf"))
+			local ok, data = pcall(game.HttpGet, game, "https://github.com/sametexe001/luas/raw/refs/heads/main/fonts/InterSemibold.ttf")
+			if not ok or not data then return end
+			writefile(ttfPath, data)
 		end
 		local fd = { name = "SH_Font", faces = {{ name = "Regular", weight = 400, style = "Regular", assetId = getcustomasset(ttfPath) }} }
 		writefile(jsonPath, HTTP:JSONEncode(fd))
 		Library.Font = Font.new(getcustomasset(jsonPath))
 	end
-	setupFont()
+	local fontOk = pcall(setupFont)
+	if not fontOk or not Library.Font then
+		Library.Font = Font.fromEnum(Enum.Font.Gotham)
+	end
 
 	Library.LoadIconFont = function(self)
 		if self.IconFont or self._iconFontLoading then return end
@@ -405,7 +414,9 @@ local Library = {} do
 
 	Library.ListConfigs = function(self)
 		local list = {}
-		for _, f in listfiles(self.Folders.Configs) do
+		local ok, files = pcall(listfiles, self.Folders.Configs)
+		if not ok or not files then return list end
+		for _, f in files do
 			local name = tostring(f):gsub("\\", "/"):match("([^/]+)$") or ""
 			if sFind(name, tostring(game.GameId), 1, true) then
 				ins(list, name:gsub(tostring(game.GameId) .. "%.json$", ""):gsub("%.json$", ""))
@@ -1562,9 +1573,10 @@ local Library = {} do
 			local open = false
 			local listFrame
 
+			local lastListW = 0
 			local function closeDropdown()
 				if listFrame then
-					tw(listFrame, { BackgroundTransparency = 1, Size = U2.new(1, 0, 0, 0) }, 0.15)
+					tw(listFrame, { BackgroundTransparency = 1, Size = U2.fromOffset(lastListW, 0) }, 0.15)
 					task.delay(0.16, function()
 						if listFrame then listFrame:Destroy() listFrame = nil end
 					end)
@@ -1664,12 +1676,13 @@ local Library = {} do
 					end)
 				end
 
-				local absPos  = btnFrame.AbsolutePosition
-				local absSize = btnFrame.AbsoluteSize
-				local listW   = absSize.X
+			local absPos  = btnFrame.AbsolutePosition
+			local absSize = btnFrame.AbsoluteSize
+			local listW   = absSize.X
+			lastListW     = listW
 
-				listFrame.Position = U2.fromOffset(absPos.X, absPos.Y + absSize.Y + 3)
-				listFrame.Size     = U2.fromOffset(listW, 0)
+			listFrame.Position = U2.fromOffset(absPos.X, absPos.Y + absSize.Y + 3)
+			listFrame.Size     = U2.fromOffset(listW, 0)
 
 				tw(listFrame, { Size = U2.fromOffset(listW, listH) }, 0.15)
 				tw(arrowLbl, { Rotation = 180 }, 0.15)
@@ -1930,8 +1943,7 @@ local Library = {} do
 				local absPos = preview.AbsolutePosition
 				cpFrame.Position = U2.fromOffset(absPos.X - 200, absPos.Y + 20)
 
-				local r, g, b = default.R, default.G, default.B
-				local h, s, v = Color3.toHSV(RGB(r * 255, g * 255, b * 255))
+				local h, s, v = CP.Value:ToHSV()
 
 				local svFrame = make("Frame", {
 					Parent           = cpFrame, Name = uid(),
@@ -1959,7 +1971,7 @@ local Library = {} do
 					Parent  = svOverlay,
 					Color   = ColorSequence.new({ ColorSequenceKeypoint.new(0, RGB(0,0,0)), ColorSequenceKeypoint.new(1, RGB(0,0,0)) }),
 					Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }),
-					Rotation = 270,
+					Rotation = 90,
 				})
 				corner(svOverlay, 5)
 
@@ -2346,8 +2358,10 @@ local Library = {} do
 
 	Library._isMouseOver = function(self, frame)
 		if not frame then return false end
+		local ok, pos = pcall(function() return frame.AbsolutePosition end)
+		if not ok then return false end
 		local m = UIS:GetMouseLocation()
-		local p = frame.AbsolutePosition
+		local p = pos
 		local s = frame.AbsoluteSize
 		return m.X >= p.X and m.X <= p.X + s.X and m.Y >= p.Y and m.Y <= p.Y + s.Y
 	end
