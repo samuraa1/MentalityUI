@@ -3568,7 +3568,10 @@ local Library do
         end
 
         Library.Category = function(self, Name)
-            local Items = { } do 
+            if Name == nil or Name == "" then
+                return
+            end
+            local Items = { } do
                 Items["Category"] = Instances:Create("TextLabel", {
                     Parent = self.Items["LeftTabsScroll"].Instance,
                     Name = "\0",
@@ -3586,7 +3589,7 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  Items["Category"]:AddToTheme({TextColor3 = "Text"})
-            end                
+            end
         end
 
         Library.TabDivider = function(self)
