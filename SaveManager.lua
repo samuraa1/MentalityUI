@@ -32,6 +32,7 @@ function SaveManager:ListConfigs()
             table.insert(list, name)
         end
     end
+    table.sort(list)
     return list
 end
 
