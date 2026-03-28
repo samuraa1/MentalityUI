@@ -1,6 +1,16 @@
-# MentalityUI Rewrite
+# 🧠 MentalityUI Rewrite
 
-Modern Roblox UI library (**Luau**): sidebar, two-column pages, **dashboard**, blur, **themes**, **configs**, built-in **settings** tab.
+Modern Roblox UI library (**Luau**): sidebar, two-column pages, **dashboard**, blur, **themes**, **configs**, and a built-in **settings** tab.
+
+## ✨ Recent highlights
+
+- **Sidebar** — blur on the tab column was removed to fix a bottom-left seam; tab corner reads cleaner with the main panel blur only.
+- **Keybinds** — short debounce on key events + debounced menu toggle; fewer double-fires.
+- **Floating button & draggable panels** — drag uses a **grab offset** so the control stays under the cursor; smooth interpolation on the floating toggle.
+- **Notifications** — header + wrapped body + **timer bar** under the text (shrinks smoothly).
+- **Mobile** — taller sliders with wrapped names; optional **Show keybind rows** in settings (default off on touch).
+- **Fonts** — weights include **Thin** and **ExtraLight**; default weight remains **Light**.
+- **PinToBottom** — `Library:CreateSettingsPage(Window, list, { PinToBottom = true })` or `Window` field `PinToBottom` to pin **UI Settings** last in the sidebar.
 
 - **Author (library):** samet — [Discord](https://discord.gg/VhvTd5HV8d)
 - **Maintained fork / raw files:** [samuraa1/MentalityUI](https://github.com/samuraa1/MentalityUI)
