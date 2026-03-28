@@ -428,8 +428,9 @@ local Library do
         
             local Gui = self.Instance
             local Dragging = false 
-            local DragStartScreen = nil
-            local StartAbsPos = nil
+            local GrabOffsetScreen = nil
+            local ActiveDragTween = nil
+            local dragSmooth = 0.22
 
             local function setPositionFromAbsolute(targetAbsX, targetAbsY)
                 local parent = Gui.Parent
@@ -439,7 +440,13 @@ local Library do
                 local gs = Gui.AbsoluteSize
                 local nx = MathClamp(targetAbsX, pap.X, pap.X + MathMax(0, psz.X - gs.X))
                 local ny = MathClamp(targetAbsY, pap.Y, pap.Y + MathMax(0, psz.Y - gs.Y))
-                Gui.Position = UDim2FromOffset(nx - pap.X, ny - pap.Y)
+                local goal = UDim2FromOffset(nx - pap.X, ny - pap.Y)
+                if ActiveDragTween then
+                    pcall(function() ActiveDragTween:Cancel() end)
+                    ActiveDragTween = nil
+                end
+                ActiveDragTween = TweenService:Create(Gui, TweenInfo.new(dragSmooth, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = goal})
+                ActiveDragTween:Play()
             end
         
             local InputChanged
@@ -447,8 +454,9 @@ local Library do
             self:Connect("InputBegan", function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                     Dragging = true
-                    DragStartScreen = UserInputService:GetMouseLocation()
-                    StartAbsPos = Gui.AbsolutePosition
+                    local m = UserInputService:GetMouseLocation()
+                    local ap = Gui.AbsolutePosition
+                    GrabOffsetScreen = Vector2.new(m.X - ap.X, m.Y - ap.Y)
 
                     if InputChanged then 
                         return
@@ -457,8 +465,7 @@ local Library do
                     InputChanged = Input.Changed:Connect(function()
                         if Input.UserInputState == Enum.UserInputState.End then
                             Dragging = false
-                            DragStartScreen = nil
-                            StartAbsPos = nil
+                            GrabOffsetScreen = nil
                             InputChanged:Disconnect()
                             InputChanged = nil
                         end
@@ -467,12 +474,10 @@ local Library do
             end)
         
             Library:Connect(UserInputService.InputChanged, function(Input)
-                if not Dragging or not DragStartScreen or not StartAbsPos then return end
+                if not Dragging or not GrabOffsetScreen then return end
                 if Input.UserInputType ~= Enum.UserInputType.MouseMovement and Input.UserInputType ~= Enum.UserInputType.Touch then return end
                 local now = UserInputService:GetMouseLocation()
-                local dx = now.X - DragStartScreen.X
-                local dy = now.Y - DragStartScreen.Y
-                setPositionFromAbsolute(StartAbsPos.X + dx, StartAbsPos.Y + dy)
+                setPositionFromAbsolute(now.X - GrabOffsetScreen.X, now.Y - GrabOffsetScreen.Y)
             end)
         
             return Dragging
@@ -683,16 +688,20 @@ local Library do
         local Medium = Font.new(FontId, Enum.FontWeight.Medium, Enum.FontStyle.Normal)
         local Regular = Font.new(FontId, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
         local Light = Font.new(FontId, Enum.FontWeight.Light, Enum.FontStyle.Normal)
+        local Thin = Font.new(FontId, Enum.FontWeight.Thin, Enum.FontStyle.Normal)
         local Bold = Font.new(FontId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
         local ExtraBold = Font.new(FontId, Enum.FontWeight.ExtraBold, Enum.FontStyle.Normal)
+        local Heavy = Font.new(FontId, Enum.FontWeight.Heavy, Enum.FontStyle.Normal)
 
         Library.Fonts = {
+            ["Heavy"] = Heavy,
             ["ExtraBold"] = ExtraBold,
             ["Bold"] = Bold,
             ["SemiBold"] = SemiBold,
             ["Medium"] = Medium,
             ["Regular"] = Regular,
             ["Light"] = Light,
+            ["Thin"] = Thin,
         }
 
         Library.Font = Light
@@ -835,10 +844,11 @@ local Library do
         end
 
         for _, inst in ipairs(Lighting:GetChildren()) do
-            if inst:IsA("DepthOfFieldEffect") and inst.Name == "" then
+            if inst:IsA("DepthOfFieldEffect") then
                 pcall(function() inst:Destroy() end)
             end
         end
+        pcall(function() Lighting.Blur.Size = 0 end)
 
         if self.Holder then 
             self.Holder:Clean()
@@ -2342,32 +2352,23 @@ local Library do
         end
 
         Library.Notification = function(self, Data)
-            local Items = { } do 
+            local Items = { } do
                 Items["Notification"] = Instances:Create("Frame", {
                     Parent = Library.NotifHolder.Instance,
                     Name = "\0",
-                    BackgroundTransparency = 0.3499999940395355,
+                    BackgroundTransparency = 0.35,
                     BorderColor3 = FromRGB(0, 0, 0),
                     BorderSizePixel = 0,
                     AutomaticSize = Enum.AutomaticSize.XY,
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })
-                
-                Items["Title"] = Instances:Create("TextLabel", {
+
+                Instances:Create("UICorner", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
-                    FontFace = Library.Font,
-                    TextColor3 = FromRGB(255, 255, 255),
-                    BorderColor3 = FromRGB(0, 0, 0),
-                    Text = Data.Title,
-                    BackgroundTransparency = 1,
-                    Size = UDim2New(0, 0, 0, 15),
-                    BorderSizePixel = 0,
-                    AutomaticSize = Enum.AutomaticSize.XY,
-                    TextSize = 14,
-                    BackgroundColor3 = FromRGB(255, 255, 255)
-                })  Items["Title"]:AddToTheme({TextColor3 = "Text"})
-                
+                    CornerRadius = UDimNew(0, 5)
+                })
+
                 Instances:Create("UIPadding", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
@@ -2376,70 +2377,55 @@ local Library do
                     PaddingRight = UDimNew(0, 8),
                     PaddingLeft = UDimNew(0, 8)
                 })
-                
-                Instances:Create("UICorner", {
+
+                Instances:Create("UIListLayout", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
-                    CornerRadius = UDimNew(0, 5)
+                    FillDirection = Enum.FillDirection.Vertical,
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    Padding = UDimNew(0, 6),
+                    HorizontalAlignment = Enum.HorizontalAlignment.Left,
+                    VerticalAlignment = Enum.VerticalAlignment.Top,
                 })
-                
-                Items["Description"] = Instances:Create("TextLabel", {
+
+                Items["TitleRow"] = Instances:Create("Frame", {
                     Parent = Items["Notification"].Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    Size = UDim2New(1, 0, 0, 18),
+                    BorderSizePixel = 0,
+                    BackgroundColor3 = FromRGB(255, 255, 255)
+                })
+
+                Items["Title"] = Instances:Create("TextLabel", {
+                    Parent = Items["TitleRow"].Instance,
                     Name = "\0",
                     FontFace = Library.Font,
                     TextColor3 = FromRGB(255, 255, 255),
-                    TextTransparency = 0.30000001192092896,
-                    Text = Data.Description,
-                    Size = UDim2New(0, 0, 0, 15),
-                    BorderSizePixel = 0,
+                    Text = Data.Title,
                     BackgroundTransparency = 1,
-                    Position = UDim2New(0, 0, 0, 20),
-                    BorderColor3 = FromRGB(0, 0, 0),
-                    AutomaticSize = Enum.AutomaticSize.XY,
+                    Size = UDim2New(1, -22, 1, 0),
+                    BorderSizePixel = 0,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextYAlignment = Enum.TextYAlignment.Center,
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(255, 255, 255)
-                })  Items["Description"]:AddToTheme({TextColor3 = "Text"})
-                
-                Items["Accent"] = Instances:Create("Frame", {
-                    Parent = Items["Notification"].Instance,
-                    Name = "\0",
-                    AnchorPoint = Vector2New(0, 1),
-                    Position = UDim2New(0, 8, 1, -8),
-                    BorderColor3 = FromRGB(0, 0, 0),
-                    Size = UDim2New(1, -16, 0, 4),
-                    BorderSizePixel = 0,
-                    BackgroundColor3 = FromRGB(255, 255, 255)
-                })
-                
-                Instances:Create("UICorner", {
-                    Parent = Items["Accent"].Instance,
-                    Name = "\0",
-                    CornerRadius = UDimNew(1, 0)
-                })
-                
-                Instances:Create("UIGradient", {
-                    Parent = Items["Accent"].Instance,
-                    Name = "\0",
-                    Color = RGBSequence{RGBSequenceKeypoint(0, FromRGB(255, 255, 255)), RGBSequenceKeypoint(1, FromRGB(143, 143, 143))}
-                }):AddToTheme({Color = function()
-                    return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
-                end})
-                
+                })  Items["Title"]:AddToTheme({TextColor3 = "Text"})
+
                 local iconId = Data.Icon or "97594400820219"
                 Items["Icon"] = Instances:Create("ImageLabel", {
-                    Parent = Items["Notification"].Instance,
+                    Parent = Items["TitleRow"].Instance,
                     Name = "\0",
                     ImageColor3 = FromRGB(255, 255, 255),
-                    BorderColor3 = FromRGB(0, 0, 0),
                     AnchorPoint = Vector2New(1, 0),
+                    Position = UDim2New(1, 0, 0, 0),
                     Image = "rbxassetid://"..tostring(iconId),
                     BackgroundTransparency = 1,
-                    Position = UDim2New(1, 0, 0, 0),
                     Size = UDim2New(0, 16, 0, 16),
                     BorderSizePixel = 0,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })
-                
+
                 if not Data.IconColor then
                     Instances:Create("UIGradient", {
                         Parent = Items["Icon"].Instance,
@@ -2448,15 +2434,66 @@ local Library do
                         Color = RGBSequence{RGBSequenceKeypoint(0, FromRGB(255, 255, 255)), RGBSequenceKeypoint(1, FromRGB(143, 143, 143))}
                     }):AddToTheme({Color = function()
                         return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
-                    end})             
+                    end})
                 else
                     Instances:Create("UIGradient", {
                         Parent = Items["Icon"].Instance,
                         Name = "\0",
                         Rotation = -115,
                         Color = RGBSequence{RGBSequenceKeypoint(0, Data.IconColor.Start), RGBSequenceKeypoint(1, Data.IconColor.End)}
-                    })         
-                end   
+                    })
+                end
+
+                Items["Description"] = Instances:Create("TextLabel", {
+                    Parent = Items["Notification"].Instance,
+                    Name = "\0",
+                    FontFace = Library.Font,
+                    TextColor3 = FromRGB(255, 255, 255),
+                    TextTransparency = 0.30000001192092896,
+                    Text = Data.Description,
+                    TextWrapped = true,
+                    Size = UDim2New(1, 0, 0, 0),
+                    BorderSizePixel = 0,
+                    BackgroundTransparency = 1,
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    BackgroundColor3 = FromRGB(255, 255, 255)
+                })  Items["Description"]:AddToTheme({TextColor3 = "Text"})
+
+                Items["BarTrack"] = Instances:Create("Frame", {
+                    Parent = Items["Notification"].Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    Size = UDim2New(1, 0, 0, 6),
+                    BorderSizePixel = 0,
+                    BackgroundColor3 = FromRGB(255, 255, 255)
+                })
+
+                Items["Accent"] = Instances:Create("Frame", {
+                    Parent = Items["BarTrack"].Instance,
+                    Name = "\0",
+                    AnchorPoint = Vector2New(0, 0.5),
+                    Position = UDim2New(0, 0, 0.5, 0),
+                    BorderColor3 = FromRGB(0, 0, 0),
+                    Size = UDim2New(0, 0, 0, 4),
+                    BorderSizePixel = 0,
+                    BackgroundColor3 = FromRGB(255, 255, 255)
+                })
+
+                Instances:Create("UICorner", {
+                    Parent = Items["Accent"].Instance,
+                    Name = "\0",
+                    CornerRadius = UDimNew(1, 0)
+                })
+
+                Instances:Create("UIGradient", {
+                    Parent = Items["Accent"].Instance,
+                    Name = "\0",
+                    Color = RGBSequence{RGBSequenceKeypoint(0, FromRGB(255, 255, 255)), RGBSequenceKeypoint(1, FromRGB(143, 143, 143))}
+                }):AddToTheme({Color = function()
+                    return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
+                end})
             end
 
             local fadeInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -2477,9 +2514,9 @@ local Library do
                 Items["Accent"]:Tween(fadeInfo, {BackgroundTransparency = 0})
 
                 local hold = math.clamp(tonumber(Data.Duration) or 3, 0.5, 120)
-                task.wait(0.12)
-                local nf = Items["Notification"].Instance
-                local barW = math.max(40, nf.AbsoluteSize.X - 16)
+                task.wait(0.15)
+                local track = Items["BarTrack"].Instance.AbsoluteSize.X
+                local barW = math.max(40, track)
                 Items["Accent"].Instance.Size = UDim2New(0, barW, 0, 4)
                 Items["Accent"]:Tween(TweenInfo.new(hold, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(0, 0, 0, 4)})
 
@@ -2511,7 +2548,8 @@ local Library do
                 IsOpen = false,
                 CurrentAlignment = "LeftTabs",
                 TabSwitchCooldownSec = 0.5,
-                _tabCooldownUntil = 0
+                _tabCooldownUntil = 0,
+                _tabSeq = 0,
             }
 
             local Items = { } do
@@ -2656,9 +2694,7 @@ local Library do
                     Active = true,
                     ClipsDescendants = true,
                     ZIndex = 3,
-                })
-
-                Library:MakeBlurred(Items["LeftTabs"], Window)
+                }) 
 
                 local Gui = Items["MainFrame"].Instance
 
@@ -2769,17 +2805,20 @@ local Library do
 
                     local floatDragging = false
                     local floatPressStart = nil
-                    local floatGrabAbs = nil
+                    local floatGrabOffset = nil
                     local floatMoved = false
-                    local FLOAT_DRAG_PX = 8
+                    local FLOAT_DRAG_PX = 10
+                    local floatLerpPos = nil
 
                     Items["FloatingButton"]:Connect("InputBegan", function(Input)
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                             floatDragging = true
                             floatMoved = false
-                            floatPressStart = UserInputService:GetMouseLocation()
                             local inst = Items["FloatingButton"].Instance
-                            floatGrabAbs = inst.AbsolutePosition
+                            floatPressStart = UserInputService:GetMouseLocation()
+                            local ap = inst.AbsolutePosition
+                            floatGrabOffset = Vector2New(floatPressStart.X - ap.X, floatPressStart.Y - ap.Y)
+                            floatLerpPos = Vector2New(inst.Position.X.Offset, inst.Position.Y.Offset)
                         end
                     end)
 
@@ -2792,22 +2831,21 @@ local Library do
                             end
                             floatDragging = false
                             floatPressStart = nil
-                            floatGrabAbs = nil
+                            floatGrabOffset = nil
                             floatMoved = false
+                            floatLerpPos = nil
                         end
                     end)
 
                     Library:Connect(RunService.RenderStepped, function()
-                        if not floatDragging or not floatPressStart or not floatGrabAbs then
+                        if not floatDragging or not floatGrabOffset then
                             return
                         end
                         local inst = Items["FloatingButton"].Instance
                         local parent = inst.Parent
                         if not parent then return end
                         local now = UserInputService:GetMouseLocation()
-                        local totalDx = now.X - floatPressStart.X
-                        local totalDy = now.Y - floatPressStart.Y
-                        if (Vector2New(totalDx, totalDy)).Magnitude >= FLOAT_DRAG_PX then
+                        if floatPressStart and (Vector2New(now.X - floatPressStart.X, now.Y - floatPressStart.Y)).Magnitude >= FLOAT_DRAG_PX then
                             floatMoved = true
                         end
                         if not floatMoved then
@@ -2816,11 +2854,12 @@ local Library do
                         local psz = parent.AbsoluteSize
                         local sz = inst.AbsoluteSize
                         local p0 = parent.AbsolutePosition
-                        local newAbsX = floatGrabAbs.X + totalDx
-                        local newAbsY = floatGrabAbs.Y + totalDy
-                        newAbsX = MathClamp(newAbsX, p0.X, p0.X + MathMax(0, psz.X - sz.X))
-                        newAbsY = MathClamp(newAbsY, p0.Y, p0.Y + MathMax(0, psz.Y - sz.Y))
-                        inst.Position = UDim2FromOffset(newAbsX - p0.X, newAbsY - p0.Y)
+                        local newAbsX = MathClamp(now.X - floatGrabOffset.X, p0.X, p0.X + MathMax(0, psz.X - sz.X))
+                        local newAbsY = MathClamp(now.Y - floatGrabOffset.Y, p0.Y, p0.Y + MathMax(0, psz.Y - sz.Y))
+                        local gx = newAbsX - p0.X
+                        local gy = newAbsY - p0.Y
+                        floatLerpPos = floatLerpPos:Lerp(Vector2New(gx, gy), 0.28)
+                        inst.Position = UDim2FromOffset(floatLerpPos.X, floatLerpPos.Y)
                     end)
                 end
 
@@ -3370,6 +3409,18 @@ local Library do
                         end
                     end
                 end)
+                task.defer(function()
+                    local mf = Items["MainFrame"] and Items["MainFrame"].Instance
+                    if not mf then return end
+                    local sc = mf:FindFirstChildOfClass("UIScale")
+                    if not sc then
+                        sc = Instance.new("UIScale")
+                        sc.Parent = mf
+                    end
+                    local targetScale = sc.Scale > 0 and sc.Scale or 1
+                    sc.Scale = targetScale * 0.94
+                    TweenService:Create(sc, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
+                end)
             end
 
             -- FloatingButton: toggle is handled in InputEnded (after MakeDraggable) so drag does not open/close the window.
@@ -3556,13 +3607,20 @@ local Library do
         Library.Page = function(self, Data)
             Data = Data or { }
 
+            local explicitOrder = Data.LayoutOrder or Data.layoutOrder or Data.TabLayoutOrder
             local Page = {
                 Window = self,
 
                 Name = Data.Name or Data.name or "Page",
                 Icon = Data.Icon or Data.icon or "100050851789190",
                 Columns = Data.Columns or Data.columns or 2,
-                TabLayoutOrder = Data.LayoutOrder or Data.layoutOrder or Data.TabLayoutOrder or 0,
+                TabLayoutOrder = (function()
+                    if explicitOrder ~= nil then
+                        return explicitOrder
+                    end
+                    self._tabSeq = (self._tabSeq or 0) + 1
+                    return self._tabSeq
+                end)(),
 
                 Items = { },
                 ColumnsData = { },
@@ -3860,11 +3918,14 @@ local Library do
             }
 
             local AddQuickCard
+            Window._tabSeq = (Window._tabSeq or 0) + 1
+            local dashTabLayoutOrder = Data.LayoutOrder or Data.layoutOrder or Window._tabSeq
             local DashItems = {} do
                 -- Tab button (same as normal page)
                 DashItems["Inactive"] = Instances:Create("TextButton", {
                     Parent = Window.Items["LeftTabsScroll"].Instance,
                     Name = "\0",
+                    LayoutOrder = dashTabLayoutOrder,
                     FontFace = Library.Font,
                     TextColor3 = FromRGB(0, 0, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
@@ -4123,7 +4184,8 @@ local Library do
                     Instances:Create("UIStroke", {
                         Parent = linkBtn.Instance,
                         Name = "\0",
-                        Thickness = 2,
+                        Thickness = 3,
+                        Transparency = 0.12,
                     }):AddToTheme({Color = "Accent"})
 
                     local linkIcon = Instances:Create("ImageLabel", {
@@ -4151,7 +4213,7 @@ local Library do
                     end)
                     linkBtn:OnHover(function()
                         linkBtn:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0})
-                        linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.55})
+                        linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.28})
                     end)
                     linkBtn:OnHoverLeave(function()
                         linkBtn:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.1})
@@ -4211,9 +4273,9 @@ local Library do
                 Instances:Create("Frame", {
                     Parent = LeftCol.Instance,
                     Name = "\0",
-                    BackgroundColor3 = FromRGB(38, 36, 46),
+                    BackgroundColor3 = FromRGB(52, 50, 62),
                     Position = UDim2New(0, 0, 0, 195),
-                    Size = UDim2New(1, 0, 0, 1),
+                    Size = UDim2New(1, 0, 0, 2),
                     BorderSizePixel = 0,
                     ZIndex = 2,
                     BackgroundTransparency = 0
@@ -7852,7 +7914,10 @@ local Library do
                 end)
             end)
 
-            Library:Connect(UserInputService.InputBegan, function(Input)
+            Library:Connect(UserInputService.InputBegan, function(Input, gameProcessed)
+                if gameProcessed then
+                    return
+                end
                 if Keybind.Picking then
                     return
                 end
@@ -7894,7 +7959,10 @@ local Library do
                 end
             end)
 
-            Library:Connect(UserInputService.InputEnded, function(Input)
+            Library:Connect(UserInputService.InputEnded, function(Input, gameProcessed)
+                if gameProcessed then
+                    return
+                end
                 if Keybind.Picking then
                     return
                 end
@@ -8582,7 +8650,7 @@ local Library do
         Options = Options or {}
         local pageInfo = { Name = "UI Settings", Icon = "settings" }
         if Options.PinToBottom == true or Options.pinToBottom == true then
-            pageInfo.LayoutOrder = 999
+            pageInfo.LayoutOrder = 100000
         end
         local Page = Window:Page(pageInfo)
 
@@ -8609,7 +8677,7 @@ local Library do
                 Name = "Font weight",
                 Flag = "FontStyle",
                 Default = "Light",
-                Items = { "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold" },
+                Items = { "Thin", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Heavy" },
                 Callback = function(Value)
                     local FontData = Library.Fonts[Value]
                     if FontData then
