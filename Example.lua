@@ -15,6 +15,9 @@
 local LIB_URL = "https://raw.githubusercontent.com/samuraa1/MentalityUI/main/Library.lua"
 local Library = loadstring(game:HttpGet(LIB_URL))()
 
+-- Library:SetKeybindRowsVisible(false) — hide all per-row keybind UIs (e.g. mobile).
+-- CreateSettingsPage(..., { PinToBottom = true }) — pin the UI Settings tab to the end of the sidebar.
+
 -- Optional: same repo helpers (load only if you use them)
 -- local SaveManager = loadstring(game:HttpGet(
 --     "https://raw.githubusercontent.com/samuraa1/MentalityUI/main/SaveManager.lua"
@@ -31,6 +34,8 @@ local Window = Library:Window({
     Name = "Example Hub",
     SubName = "MentalityUI",
     Logo = "97594400820219",
+    -- Optional: forwarded to CreateSettingsPage when you omit Options.PinToBottom there
+    PinToBottom = true,
 })
 
 -- Floating keybind list (optional). Omit on pure touch if you prefer.
