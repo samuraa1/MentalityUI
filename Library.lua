@@ -97,6 +97,8 @@ local Library do
 
         SetFlags = { },
 
+        BlurInstances = {},
+
         UnnamedConnections = 0,
         UnnamedFlags = 0,
 
@@ -426,21 +428,18 @@ local Library do
         
             local Gui = self.Instance
             local Dragging = false 
-            local DragStart
-            local StartPosition 
-        
-            local Set = function(Input)
-                local DragDelta = Input.Position - DragStart
-                local NewX = StartPosition.X.Offset + DragDelta.X
-                local NewY = StartPosition.Y.Offset + DragDelta.Y
+            local DragStartScreen = nil
+            local StartAbsPos = nil
 
-                local ScreenSize = Gui.Parent.AbsoluteSize
-                local GuiSize = Gui.AbsoluteSize
-        
-                NewX = MathClamp(NewX, 0, ScreenSize.X - GuiSize.X)
-                NewY = MathClamp(NewY, 0, ScreenSize.Y - GuiSize.Y)
-        
-                self:Tween(TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2New(0, NewX, 0, NewY)})
+            local function setPositionFromAbsolute(targetAbsX, targetAbsY)
+                local parent = Gui.Parent
+                if not parent then return end
+                local pap = parent.AbsolutePosition
+                local psz = parent.AbsoluteSize
+                local gs = Gui.AbsoluteSize
+                local nx = MathClamp(targetAbsX, pap.X, pap.X + MathMax(0, psz.X - gs.X))
+                local ny = MathClamp(targetAbsY, pap.Y, pap.Y + MathMax(0, psz.Y - gs.Y))
+                Gui.Position = UDim2FromOffset(nx - pap.X, ny - pap.Y)
             end
         
             local InputChanged
@@ -448,9 +447,9 @@ local Library do
             self:Connect("InputBegan", function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                     Dragging = true
-                    DragStart = Input.Position
-                    StartPosition = Gui.Position
-        
+                    DragStartScreen = UserInputService:GetMouseLocation()
+                    StartAbsPos = Gui.AbsolutePosition
+
                     if InputChanged then 
                         return
                     end
@@ -458,6 +457,8 @@ local Library do
                     InputChanged = Input.Changed:Connect(function()
                         if Input.UserInputState == Enum.UserInputState.End then
                             Dragging = false
+                            DragStartScreen = nil
+                            StartAbsPos = nil
                             InputChanged:Disconnect()
                             InputChanged = nil
                         end
@@ -466,11 +467,12 @@ local Library do
             end)
         
             Library:Connect(UserInputService.InputChanged, function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
-                    if Dragging then
-                        Set(Input)
-                    end
-                end
+                if not Dragging or not DragStartScreen or not StartAbsPos then return end
+                if Input.UserInputType ~= Enum.UserInputType.MouseMovement and Input.UserInputType ~= Enum.UserInputType.Touch then return end
+                local now = UserInputService:GetMouseLocation()
+                local dx = now.X - DragStartScreen.X
+                local dy = now.Y - DragStartScreen.Y
+                setPositionFromAbsolute(StartAbsPos.X + dx, StartAbsPos.Y + dy)
             end)
         
             return Dragging
@@ -676,19 +678,24 @@ local Library do
             return getcustomasset(`{Library.Folders.Assets}/{Name}.font`)
         end
 
-        local SemiBold = Font.new("rbxassetid://12187365364", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
-
-        local Regular = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-
-        local Light = Font.new("rbxassetid://12187365364", Enum.FontWeight.Light, Enum.FontStyle.Normal)
+        local FontId = "rbxassetid://12187365364"
+        local SemiBold = Font.new(FontId, Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+        local Medium = Font.new(FontId, Enum.FontWeight.Medium, Enum.FontStyle.Normal)
+        local Regular = Font.new(FontId, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+        local Light = Font.new(FontId, Enum.FontWeight.Light, Enum.FontStyle.Normal)
+        local Bold = Font.new(FontId, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        local ExtraBold = Font.new(FontId, Enum.FontWeight.ExtraBold, Enum.FontStyle.Normal)
 
         Library.Fonts = {
+            ["ExtraBold"] = ExtraBold,
+            ["Bold"] = Bold,
             ["SemiBold"] = SemiBold,
+            ["Medium"] = Medium,
             ["Regular"] = Regular,
-            ["Light"] = Light
+            ["Light"] = Light,
         }
 
-        Library.Font = SemiBold
+        Library.Font = Light
     end
 
     -- Icon resolution: supports rbxassetid numbers, named Lucide icons
@@ -817,6 +824,21 @@ local Library do
 
         pcall(function() UserInputService.MouseIconEnabled = true end)
         if Library.CursorConn then pcall(function() Library.CursorConn:Disconnect() end) end
+
+        if Library.BlurInstances then
+            for _, blur in ipairs(Library.BlurInstances) do
+                pcall(function()
+                    if typeof(blur) == "Instance" then blur:Destroy() end
+                end)
+            end
+            table.clear(Library.BlurInstances)
+        end
+
+        for _, inst in ipairs(Lighting:GetChildren()) do
+            if inst:IsA("DepthOfFieldEffect") and inst.Name == "" then
+                pcall(function() inst:Destroy() end)
+            end
+        end
 
         if self.Holder then 
             self.Holder:Clean()
@@ -1285,6 +1307,9 @@ local Library do
                 BlockMesh.Instance.Scale  = Vector3New(0, 0, 0)
             end
         end)
+
+        TableInsert(Library.BlurInstances, Part.Instance)
+        TableInsert(Library.BlurInstances, DepthOfField.Instance)
     end
 
     Library.EscapePattern = function(self, String)
@@ -2104,9 +2129,9 @@ local Library do
                     Parent = Library.Holder.Instance,
                     Name = "\0",
                     BorderColor3 = FromRGB(0, 0, 0),
-                    AnchorPoint = Vector2New(0, 0.5),
+                    AnchorPoint = Vector2New(0, 0),
                     BackgroundTransparency = 0.30000001192092896,
-                    Position = UDim2New(0, 20, 0.5, 20),
+                    Position = UDim2New(0, 20, 0, 72),
                     Size = UDim2New(0, 100, 0, 30),
                     BorderSizePixel = 0,
                     AutomaticSize = Enum.AutomaticSize.XY,
@@ -2378,9 +2403,10 @@ local Library do
                 Items["Accent"] = Instances:Create("Frame", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
-                    Position = UDim2New(0, 0, 0, Items["Description"].Instance.AbsoluteSize.Y + Items["Title"].Instance.AbsoluteSize.Y + 12),
+                    AnchorPoint = Vector2New(0, 1),
+                    Position = UDim2New(0, 8, 1, -8),
                     BorderColor3 = FromRGB(0, 0, 0),
-                    Size = UDim2New(0, 0, 0, 6),
+                    Size = UDim2New(1, -16, 0, 4),
                     BorderSizePixel = 0,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })
@@ -2440,7 +2466,7 @@ local Library do
             Items["Icon"].Instance.ImageTransparency = 1
             Items["Notification"].Instance.BackgroundTransparency = 1
             Items["Accent"].Instance.BackgroundTransparency = 1
-            Items["Accent"].Instance.Size = UDim2New(0, 0, 0, 6)
+            Items["Accent"].Instance.Size = UDim2New(0, 0, 0, 4)
 
             task.spawn(function()
                 task.wait(0.05)
@@ -2449,11 +2475,15 @@ local Library do
                 Items["Icon"]:Tween(fadeInfo, {ImageTransparency = 0})
                 Items["Notification"]:Tween(fadeInfo, {BackgroundTransparency = 0.35})
                 Items["Accent"]:Tween(fadeInfo, {BackgroundTransparency = 0})
-                local barTime = 0.45
-                Items["Accent"]:Tween(TweenInfo.new(barTime, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(1, 0, 0, 6)})
 
-                local hold = math.clamp(tonumber(Data.Duration) or 3, 0.5, 30)
-                task.wait(hold + 0.35)
+                local hold = math.clamp(tonumber(Data.Duration) or 3, 0.5, 120)
+                task.wait(0.12)
+                local nf = Items["Notification"].Instance
+                local barW = math.max(40, nf.AbsoluteSize.X - 16)
+                Items["Accent"].Instance.Size = UDim2New(0, barW, 0, 4)
+                Items["Accent"]:Tween(TweenInfo.new(hold, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(0, 0, 0, 4)})
+
+                task.wait(hold + 0.05)
 
                 Items["Title"]:Tween(fadeInfo, {TextTransparency = 1})
                 Items["Description"]:Tween(fadeInfo, {TextTransparency = 1})
@@ -2603,6 +2633,12 @@ local Library do
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["LeftTabs"]:AddToTheme({BackgroundColor3 = "Background"})
 
+                Instances:Create("UICorner", {
+                    Parent = Items["LeftTabs"].Instance,
+                    Name = "\0",
+                    CornerRadius = UDimNew(0, 14)
+                })
+
                 Items["LeftTabsScroll"] = Instances:Create("ScrollingFrame", {
                     Parent = Items["LeftTabs"].Instance,
                     Name = "\0",
@@ -2732,14 +2768,18 @@ local Library do
                     Library.FloatingButtonWidget = Items["FloatingButton"]
 
                     local floatDragging = false
-                    local floatLastMouse = nil
+                    local floatPressStart = nil
+                    local floatGrabAbs = nil
                     local floatMoved = false
+                    local FLOAT_DRAG_PX = 8
 
                     Items["FloatingButton"]:Connect("InputBegan", function(Input)
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                             floatDragging = true
                             floatMoved = false
-                            floatLastMouse = UserInputService:GetMouseLocation()
+                            floatPressStart = UserInputService:GetMouseLocation()
+                            local inst = Items["FloatingButton"].Instance
+                            floatGrabAbs = inst.AbsolutePosition
                         end
                     end)
 
@@ -2751,30 +2791,33 @@ local Library do
                                 end
                             end
                             floatDragging = false
-                            floatLastMouse = nil
+                            floatPressStart = nil
+                            floatGrabAbs = nil
                             floatMoved = false
                         end
                     end)
 
                     Library:Connect(RunService.RenderStepped, function()
-                        if not floatDragging or not floatLastMouse then
+                        if not floatDragging or not floatPressStart or not floatGrabAbs then
                             return
                         end
                         local inst = Items["FloatingButton"].Instance
                         local parent = inst.Parent
                         if not parent then return end
                         local now = UserInputService:GetMouseLocation()
-                        local delta = Vector2New(now.X - floatLastMouse.X, now.Y - floatLastMouse.Y)
-                        floatLastMouse = now
-                        if delta.Magnitude > 2 then
+                        local totalDx = now.X - floatPressStart.X
+                        local totalDy = now.Y - floatPressStart.Y
+                        if (Vector2New(totalDx, totalDy)).Magnitude >= FLOAT_DRAG_PX then
                             floatMoved = true
                         end
-                        local ap = inst.AbsolutePosition
+                        if not floatMoved then
+                            return
+                        end
                         local psz = parent.AbsoluteSize
                         local sz = inst.AbsoluteSize
                         local p0 = parent.AbsolutePosition
-                        local newAbsX = ap.X + delta.X
-                        local newAbsY = ap.Y + delta.Y
+                        local newAbsX = floatGrabAbs.X + totalDx
+                        local newAbsY = floatGrabAbs.Y + totalDy
                         newAbsX = MathClamp(newAbsX, p0.X, p0.X + MathMax(0, psz.X - sz.X))
                         newAbsY = MathClamp(newAbsY, p0.Y, p0.Y + MathMax(0, psz.Y - sz.Y))
                         inst.Position = UDim2FromOffset(newAbsX - p0.X, newAbsY - p0.Y)
@@ -3519,6 +3562,7 @@ local Library do
                 Name = Data.Name or Data.name or "Page",
                 Icon = Data.Icon or Data.icon or "100050851789190",
                 Columns = Data.Columns or Data.columns or 2,
+                TabLayoutOrder = Data.LayoutOrder or Data.layoutOrder or Data.TabLayoutOrder or 0,
 
                 Items = { },
                 ColumnsData = { },
@@ -3530,6 +3574,7 @@ local Library do
                 Items["Inactive"] = Instances:Create("TextButton", {
                     Parent = Page.Window.Items["LeftTabsScroll"].Instance,
                     Name = "\0",
+                    LayoutOrder = Page.TabLayoutOrder,
                     FontFace = Library.Font,
                     TextColor3 = FromRGB(0, 0, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
@@ -4078,7 +4123,7 @@ local Library do
                     Instances:Create("UIStroke", {
                         Parent = linkBtn.Instance,
                         Name = "\0",
-                        Thickness = 1
+                        Thickness = 2,
                     }):AddToTheme({Color = "Accent"})
 
                     local linkIcon = Instances:Create("ImageLabel", {
@@ -4120,9 +4165,9 @@ local Library do
                 Instances:Create("Frame", {
                     Parent = LeftCol.Instance,
                     Name = "\0",
-                    BackgroundColor3 = FromRGB(38, 36, 46),
+                    BackgroundColor3 = FromRGB(52, 50, 62),
                     Position = UDim2New(0, 0, 0, 120),
-                    Size = UDim2New(1, 0, 0, 1),
+                    Size = UDim2New(1, 0, 0, 2),
                     BorderSizePixel = 0,
                     ZIndex = 2,
                     BackgroundTransparency = 0
@@ -6044,8 +6089,19 @@ local Library do
                     Alpha = Data.Alpha or Data.alpha or false
                 }
 
+                if not Items["SubElements"] then
+                    Items["SubElements"] = Instances:Create("Frame", {
+                        Parent = Toggle.Section.Items["Content"].Instance,
+                        Name = "\0",
+                        Size = UDim2New(1, 0, 0, 26),
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                    })
+                end
+
                 local NewColorpicker, ColorpickerItems = Library:CreateColorpicker({
                     Parent = Items["SubElements"],
+                    Parent2 = Items["Toggle"],
                     Page = Colorpicker.Page,
                     Section = Colorpicker.Section,
                     Flag = Colorpicker.Flag,
@@ -6071,10 +6127,21 @@ local Library do
                     Mode = Data.Mode or Data.mode or "Toggle"
                 }
 
-                local NewKeybind, KeybindItems = Library:CreateKeybind({
+                if not Items["SubElements"] then
+                    Items["SubElements"] = Instances:Create("Frame", {
+                        Parent = Toggle.Section.Items["Content"].Instance,
+                        Name = "\0",
+                        Size = UDim2New(1, 0, 0, 0),
+                        AutomaticSize = Enum.AutomaticSize.Y,
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                    })
+                end
+
+                local NewKeybind = Library:CreateKeybind({
                     Parent = Items["SubElements"],
+                    Window = Keybind.Window,
                     Page = Keybind.Page,
-                    Section = Keybind.Section,
                     Flag = Keybind.Flag,
                     Default = Keybind.Default,
                     Mode = Keybind.Mode,
@@ -7243,14 +7310,16 @@ local Library do
                     TextColor3 = FromRGB(240, 240, 240),
                     TextTransparency = 0.30000001192092896,
                     Text = Label.Name,
-                    AutomaticSize = Enum.AutomaticSize.X,
-                    Size = UDim2New(0, 0, 0, 15),
+                    TextWrapped = true,
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    Size = UDim2New(1, -36, 0, 0),
                     BorderSizePixel = 0,
                     BackgroundTransparency = 1,
                     Position = UDim2New(0, 30, 0, 5),
                     BorderColor3 = FromRGB(0, 0, 0),
                     ZIndex = 2,
                     TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  Items["Text"]:AddToTheme({TextColor3 = "Text"})          
             end
@@ -7352,8 +7421,26 @@ local Library do
             return Label
         end
 
+        function Library:CreateKeybind(Data)
+            Data = Data or {}
+            local p = Data.Parent
+            local inst = (typeof(p) == "table" and p.Instance) or p
+            local fakeSection = {
+                Window = Data.Window or (Data.Page and Data.Page.Window),
+                Page = Data.Page,
+                Items = { Content = { Instance = inst } },
+                Elements = {},
+            }
+            return Library.Sections.Keybind(fakeSection, Data)
+        end
+
         Library.Sections.Keybind = function(self, Data)
             Data = Data or { }
+
+            local modeDefault = Data.Mode or Data.mode
+            if typeof(modeDefault) ~= "string" or not TableFind({ "Toggle", "Hold", "Always" }, modeDefault) then
+                modeDefault = "Toggle"
+            end
 
             local Keybind = {
                 Window = self.Window,
@@ -7364,12 +7451,14 @@ local Library do
                 Flag = Data.Flag or Data.flag or Library:NextFlag(),
                 Default = Data.Default or Data.default or Enum.KeyCode.RightShift,
                 Callback = Data.Callback or Data.callback or function() end,
-                Mode = Data.Mode or Data.mode or Enum.KeyCode.RightShift,
+                Mode = modeDefault,
 
                 Value = "",
                 ModeSelected = "",
                 Toggled = false,
-                Picking = false
+                Picking = false,
+                CodeName = nil,
+                _modeMenuConn = nil,
             }
 
             local Items = { } do
@@ -7458,105 +7547,132 @@ local Library do
                     BorderColor3 = FromRGB(0, 0, 0),
                     AnchorPoint = Vector2New(1, 0),
                     Position = UDim2New(1, 0, 0, 0),
-                    Size = UDim2New(0, 200, 0, 25),
-                    ZIndex = 2,
+                    Size = UDim2New(0, 118, 0, 25),
+                    ZIndex = 4,
                     BorderSizePixel = 0,
                     BackgroundColor3 = FromRGB(27, 26, 29)
                 })  Items["Modes"]:AddToTheme({BackgroundColor3 = "Element"})
-                
+
                 Instances:Create("UICorner", {
                     Parent = Items["Modes"].Instance,
                     Name = "\0",
                     CornerRadius = UDimNew(0, 5)
                 })
-                
-                Items["Background"] = Instances:Create("Frame", {
+
+                Instances:Create("UIStroke", {
                     Parent = Items["Modes"].Instance,
                     Name = "\0",
-                    Size = UDim2New(0.35, 0, 1, 0),
+                    Thickness = 1,
+                    Transparency = 0.5,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    Color = FromRGB(60, 90, 160)
+                }):AddToTheme({Color = "Accent"})
+
+                Items["ModeSelect"] = Instances:Create("TextButton", {
+                    Parent = Items["Modes"].Instance,
+                    Name = "\0",
+                    FontFace = Library.Font,
+                    TextColor3 = FromRGB(240, 240, 240),
+                    TextTransparency = 0.15,
+                    Text = "Toggle  ▾",
+                    AutoButtonColor = false,
                     BorderColor3 = FromRGB(0, 0, 0),
-                    ZIndex = 2,
+                    Size = UDim2New(1, 0, 1, 0),
+                    BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    BackgroundTransparency = 0,
+                    ZIndex = 5,
+                    TextSize = 13,
                     BackgroundColor3 = FromRGB(255, 255, 255)
-                })  --Items["Background"]:AddToTheme({BackgroundColor3 = "Accent"})
-                
+                })  Items["ModeSelect"]:AddToTheme({TextColor3 = "Text"})
+
+                Items["ModeList"] = Instances:Create("Frame", {
+                    Parent = Library.Holder.Instance,
+                    Name = "\0",
+                    Visible = false,
+                    BorderColor3 = FromRGB(0, 0, 0),
+                    BackgroundColor3 = FromRGB(22, 22, 26),
+                    BorderSizePixel = 0,
+                    Size = UDim2New(0, 116, 0, 66),
+                    ZIndex = 200,
+                })  Items["ModeList"]:AddToTheme({BackgroundColor3 = "Element"})
+
                 Instances:Create("UICorner", {
-                    Parent = Items["Background"].Instance,
+                    Parent = Items["ModeList"].Instance,
                     Name = "\0",
                     CornerRadius = UDimNew(0, 5)
                 })
-                
-                Instances:Create("UIGradient", {
-                    Parent = Items["Background"].Instance,
+
+                Instances:Create("UIListLayout", {
+                    Parent = Items["ModeList"].Instance,
                     Name = "\0",
-                    Rotation = -115,
-                    Color = RGBSequence{RGBSequenceKeypoint(0, FromRGB(255, 255, 255)), RGBSequenceKeypoint(1, FromRGB(166, 166, 166))}
-                }):AddToTheme({Color = function()
-                    return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
-                end})
-                
-                Items["Toggle"] = Instances:Create("TextButton", {
-                    Parent = Items["Modes"].Instance,
-                    Name = "\0",
-                    FontFace = Library.Font,
-                    TextColor3 = FromRGB(0, 0, 0),
-                    TextTransparency = 0.30000001192092896,
-                    Text = "Toggle",
-                    AutoButtonColor = false,
-                    BorderColor3 = FromRGB(0, 0, 0),
-                    Size = UDim2New(0.35, 0, 1, 0),
-                    BackgroundTransparency = 1,
-                    Position = UDim2New(0, 0, 0, -1),
-                    BorderSizePixel = 0,
-                    ZIndex = 2,
-                    TextSize = 14,
-                    BackgroundColor3 = FromRGB(255, 255, 255)
-                })  Items["Toggle"]:AddToTheme({TextColor3 = function()
-                    return Library.Theme.Text
-                end})
-                
-                Items["Hold"] = Instances:Create("TextButton", {
-                    Parent = Items["Modes"].Instance,
-                    Name = "\0",
-                    FontFace = Library.Font,
-                    TextColor3 = FromRGB(240, 240, 240),
-                    TextTransparency = 0.20000000298023224,
-                    Text = "Hold",
-                    BorderColor3 = FromRGB(0, 0, 0),
-                    AutoButtonColor = false,
-                    AnchorPoint = Vector2New(0, 0),
-                    Size = UDim2New(0.35, 0, 1, 0),
-                    BackgroundTransparency = 1,
-                    Position = UDim2New(0.35, 0, 0, -1),
-                    BorderSizePixel = 0,
-                    ZIndex = 2,
-                    TextSize = 14,
-                    BackgroundColor3 = FromRGB(255, 255, 255)
-                })  Items["Hold"]:AddToTheme({TextColor3 = function()
-                    return Library.Theme.Text
-                end})        
-                
-                Items["Always"] = Instances:Create("TextButton", {
-                    Parent = Items["Modes"].Instance,
-                    Name = "\0",
-                    FontFace = Library.Font,
-                    TextColor3 = FromRGB(240, 240, 240),
-                    TextTransparency = 0.20000000298023224,
-                    Text = "Always",
-                    BorderColor3 = FromRGB(0, 0, 0),
-                    AutoButtonColor = false,
-                    AnchorPoint = Vector2New(0, 0),
-                    Size = UDim2New(0.4, 0, 1, 0),
-                    BackgroundTransparency = 1,
-                    Position = UDim2New(0.7, -12, 0, -1),
-                    BorderSizePixel = 0,
-                    ZIndex = 2,
-                    TextSize = 14,
-                    BackgroundColor3 = FromRGB(255, 255, 255)
-                })  Items["Always"]:AddToTheme({TextColor3 = function()
-                    return Library.Theme.Text
-                end})              
+                    FillDirection = Enum.FillDirection.Vertical,
+                    Padding = UDimNew(0, 0),
+                    SortOrder = Enum.SortOrder.LayoutOrder
+                })
+
+                local function positionModeList()
+                    local m = Items["Modes"].Instance
+                    local abs = m.AbsolutePosition
+                    local sz = m.AbsoluteSize
+                    Items["ModeList"].Instance.Position = UDim2FromOffset(abs.X, abs.Y + sz.Y + 2)
+                end
+                local function closeModeMenu()
+                    Items["ModeList"].Instance.Visible = false
+                    if Keybind._modeMenuConn then
+                        Keybind._modeMenuConn:Disconnect()
+                        Keybind._modeMenuConn = nil
+                    end
+                end
+
+                local function makeModeOption(label, order)
+                    local B = Instances:Create("TextButton", {
+                        Parent = Items["ModeList"].Instance,
+                        Name = "\0",
+                        LayoutOrder = order,
+                        FontFace = Library.Font,
+                        TextColor3 = FromRGB(240, 240, 240),
+                        TextTransparency = 0.2,
+                        Text = label,
+                        AutoButtonColor = false,
+                        Size = UDim2New(1, 0, 0, 22),
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                        ZIndex = 201,
+                        TextSize = 13,
+                        BackgroundColor3 = FromRGB(255, 255, 255)
+                    })  B:AddToTheme({TextColor3 = "Text"})
+                    B:Connect("MouseButton1Click", function()
+                        closeModeMenu()
+                        Keybind:SetMode(label, false)
+                    end)
+                    return B
+                end
+
+                makeModeOption("Toggle", 1)
+                makeModeOption("Hold", 2)
+                makeModeOption("Always", 3)
+
+                Items["ModeSelect"]:Connect("MouseButton1Click", function()
+                    if Items["ModeList"].Instance.Visible then
+                        closeModeMenu()
+                        return
+                    end
+                    positionModeList()
+                    Items["ModeList"].Instance.Size = UDim2New(0, Items["Modes"].Instance.AbsoluteSize.X, 0, 66)
+                    Items["ModeList"].Instance.Visible = true
+                    if Keybind._modeMenuConn then
+                        Keybind._modeMenuConn:Disconnect()
+                    end
+                    Keybind._modeMenuConn = UserInputService.InputBegan:Connect(function(Input)
+                        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
+                            return
+                        end
+                        if Library:IsMouseOverFrame(Items["ModeList"]) or Library:IsMouseOverFrame(Items["Modes"]) then
+                            return
+                        end
+                        closeModeMenu()
+                    end)
+                end)
             end
 
             --Keybind.Section.Items["Fade"].Instance.Size = UDim2New(1, 0, 0, Keybind.Section.Items["Content"].Instance.AbsoluteSize.X - 180)
@@ -7586,57 +7702,10 @@ local Library do
                 end
             end
 
-            function Keybind:SetMode(Mode, SkipCallback) -- hard coded
-                if Mode == "Toggle" then
-                    Items["Background"]:Tween(TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0), Size = UDim2New(0.35, 0, 1, 0)})
-                    Items["Toggle"]:ChangeItemTheme({TextColor3 = function()
-                        return FromRGB(0, 0, 0)
-                    end})
-                    Items["Toggle"]:Tween(nil, {TextColor3 = FromRGB(0, 0, 0)})
-
-                    Items["Hold"]:ChangeItemTheme({TextColor3 = function()
-                        return Library.Theme.Text
-                    end})
-                    Items["Hold"]:Tween(nil, {TextColor3 = Library.Theme.Text})
-
-                    Items["Always"]:ChangeItemTheme({TextColor3 = function()
-                        return Library.Theme.Text
-                    end})
-                    Items["Always"]:Tween(nil, {TextColor3 = Library.Theme.Text})
-                elseif Mode == "Hold" then
-                    Items["Background"]:Tween(TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2New(0.35, 0, 0, 0), Size = UDim2New(0.35, 0, 1, 0)})
-                
-                    Items["Toggle"]:ChangeItemTheme({TextColor3 = function()
-                        return Library.Theme.Text
-                    end})
-                    Items["Toggle"]:Tween(nil, {TextColor3 = Library.Theme.Text})
-
-                    Items["Hold"]:ChangeItemTheme({TextColor3 = function()
-                        return FromRGB(0, 0, 0)
-                    end})
-                    Items["Hold"]:Tween(nil, {TextColor3 = FromRGB(0, 0, 0)})
-
-                    Items["Always"]:ChangeItemTheme({TextColor3 = function()
-                        return Library.Theme.Text
-                    end})
-                    Items["Always"]:Tween(nil, {TextColor3 = Library.Theme.Text})
-                elseif Mode == "Always" then
-                    Items["Background"]:Tween(TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2New(0.7, 0, 0, 0), Size = UDim2New(0.3, 0, 1, 0)})
-                
-                    Items["Toggle"]:ChangeItemTheme({TextColor3 = function()
-                        return Library.Theme.Text
-                    end})
-                    Items["Toggle"]:Tween(nil, {TextColor3 = Library.Theme.Text})
-
-                    Items["Hold"]:ChangeItemTheme({TextColor3 = function()
-                        return Library.Theme.Text
-                    end})
-                    Items["Hold"]:Tween(nil, {TextColor3 = Library.Theme.Text})
-
-                    Items["Always"]:ChangeItemTheme({TextColor3 = function()
-                        return FromRGB(0, 0, 0)
-                    end})
-                    Items["Always"]:Tween(nil, {TextColor3 = FromRGB(0, 0, 0)})
+            function Keybind:SetMode(Mode, SkipCallback)
+                Keybind.ModeSelected = Mode
+                if Items["ModeSelect"] then
+                    Items["ModeSelect"].Instance.Text = Mode .. "  ▾"
                 end
 
                 Library.Flags[Keybind.Flag] = {
@@ -7645,7 +7714,7 @@ local Library do
                     Toggled = Keybind.Toggled
                 }
 
-                if Data.Callback and not SkipCallback then 
+                if Data.Callback and not SkipCallback then
                     Library:SafeCall(Data.Callback, Keybind.Toggled)
                 end
             end
@@ -7677,16 +7746,19 @@ local Library do
             end
 
             function Keybind:Set(Key, SkipCallback)
-                if StringFind(tostring(Key), "Enum") then 
+                if typeof(Key) == "EnumItem" then
                     Keybind.Key = tostring(Key)
-
-                    Key = Key.Name == "Backspace" and "None" or Key.Name
-
-                    local KeyString = Keys[Keybind.Key] or StringGSub(Key, "Enum.", "") or "None"
-                    local TextToDisplay = StringGSub(StringGSub(KeyString, "KeyCode.", ""), "UserInputType.", "") or "None"
-
-                    Keybind.Value = TextToDisplay
-                    Items["KeyButton"].Instance.Text = TextToDisplay
+                    if Key.EnumType == Enum.KeyCode then
+                        local kn = Key.Name == "Backspace" and "None" or Key.Name
+                        Keybind.CodeName = (kn == "None") and nil or kn
+                        local disp = Keys[kn] or kn
+                        Keybind.Value = disp
+                        Items["KeyButton"].Instance.Text = disp
+                    else
+                        Keybind.CodeName = nil
+                        Keybind.Value = Key.Name or tostring(Key)
+                        Items["KeyButton"].Instance.Text = Keybind.Value
+                    end
 
                     Library.Flags[Keybind.Flag] = {
                         Mode = Keybind.ModeSelected,
@@ -7694,48 +7766,54 @@ local Library do
                         Toggled = Keybind.Toggled
                     }
 
-                    if Data.Callback and not SkipCallback then 
+                    if Data.Callback and not SkipCallback then
                         Library:SafeCall(Data.Callback, Keybind.Toggled)
                     end
 
                     Update()
                 elseif type(Key) == "table" then
-                    local RealKey = Key.Key == "Backspace" and "None" or Key.Key
-                    Keybind.Key = tostring(Key.Key)
+                    local rk = Key.Key
+                    if typeof(rk) == "EnumItem" then
+                        Keybind.Key = tostring(rk)
+                        if rk.EnumType == Enum.KeyCode then
+                            local kn = rk.Name == "Backspace" and "None" or rk.Name
+                            Keybind.CodeName = (kn == "None") and nil or kn
+                            local disp = Keys[kn] or kn
+                            Keybind.Value = disp
+                            Items["KeyButton"].Instance.Text = disp
+                        else
+                            Keybind.CodeName = nil
+                            Keybind.Value = rk.Name or tostring(rk)
+                            Items["KeyButton"].Instance.Text = Keybind.Value
+                        end
+                    else
+                        Keybind.Key = tostring(rk)
+                        Keybind.CodeName = nil
+                        Keybind.Value = tostring(rk)
+                        Items["KeyButton"].Instance.Text = Keybind.Value
+                    end
 
                     if Key.Mode then
-                        Keybind.ModeSelected = Key.Mode
                         Keybind:SetMode(Key.Mode, SkipCallback)
                     else
-                        Keybind.ModeSelected = "Toggle"
                         Keybind:SetMode("Toggle", SkipCallback)
                     end
 
-                    local KeyString = Keys[Keybind.Key] or StringGSub(tostring(RealKey), "Enum.", "") or RealKey
-                    local TextToDisplay = KeyString and StringGSub(StringGSub(KeyString, "KeyCode.", ""), "UserInputType.", "") or "None"
-
-                    TextToDisplay = StringGSub(StringGSub(KeyString, "KeyCode.", ""), "UserInputType.", "")
-
-                    Keybind.Value = TextToDisplay
-                    Items["KeyButton"].Instance.Text = TextToDisplay
-
-                    if Data.Callback and not SkipCallback then 
+                    if Data.Callback and not SkipCallback then
                         Library:SafeCall(Data.Callback, Keybind.Toggled)
                     end
 
                     Update()
-                elseif TableFind({"Toggle", "Hold", "Always"}, Key) then
-                    Keybind.ModeSelected = Key
+                elseif TableFind({ "Toggle", "Hold", "Always" }, Key) then
                     Keybind:SetMode(Key, SkipCallback)
 
-                    if Data.Callback and not SkipCallback then 
+                    if Data.Callback and not SkipCallback then
                         Library:SafeCall(Data.Callback, Keybind.Toggled)
                     end
 
                     Update()
                 end
 
-                --Items["KeyButton"].Instance.Position = UDim2New(0, Data.Text.Instance.TextBounds.X + 12, 0, 0)
                 Keybind.Picking = false
             end
 
@@ -7775,24 +7853,29 @@ local Library do
             end)
 
             Library:Connect(UserInputService.InputBegan, function(Input)
-                if Keybind.Value == "None" then
+                if Keybind.Picking then
+                    return
+                end
+                if UserInputService:GetFocusedTextBox() ~= nil then
+                    return
+                end
+                if Keybind.Value == "None" or Keybind.Value == nil or Keybind.Value == "" then
                     return
                 end
 
-                if tostring(Input.KeyCode) == Keybind.Key then
-                    if Keybind.ModeSelected == "Toggle" then 
+                local matched = false
+                if Keybind.CodeName then
+                    matched = Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Keybind.CodeName
+                elseif Keybind.Key then
+                    matched = tostring(Input.UserInputType) == Keybind.Key
+                end
+
+                if matched then
+                    if Keybind.ModeSelected == "Toggle" then
                         Keybind:Press()
-                    elseif Keybind.ModeSelected == "Hold" then 
+                    elseif Keybind.ModeSelected == "Hold" then
                         Keybind:Press(true)
-                    elseif Keybind.ModeSelected == "Always" then 
-                        Keybind:Press(true)
-                    end
-                elseif tostring(Input.UserInputType) == Keybind.Key then
-                    if Keybind.ModeSelected == "Toggle" then 
-                        Keybind:Press()
-                    elseif Keybind.ModeSelected == "Hold" then 
-                        Keybind:Press(true)
-                    elseif Keybind.ModeSelected == "Always" then 
+                    elseif Keybind.ModeSelected == "Always" then
                         Keybind:Press(true)
                     end
                 end
@@ -7802,7 +7885,8 @@ local Library do
                         return
                     end
 
-                    if Library:IsMouseOverFrame(Items["KeybindWindow"]) or Library:IsMouseOverFrame(Items["OptionHolder"]) then
+                    if (Items["KeybindWindow"] and Library:IsMouseOverFrame(Items["KeybindWindow"]))
+                        or (Items["OptionHolder"] and Library:IsMouseOverFrame(Items["OptionHolder"])) then
                         return
                     end
 
@@ -7811,38 +7895,30 @@ local Library do
             end)
 
             Library:Connect(UserInputService.InputEnded, function(Input)
-                if Keybind.Value == "None" then
+                if Keybind.Picking then
+                    return
+                end
+                if UserInputService:GetFocusedTextBox() ~= nil then
+                    return
+                end
+                if Keybind.Value == "None" or Keybind.Value == nil or Keybind.Value == "" then
                     return
                 end
 
-                if tostring(Input.KeyCode) == Keybind.Key then
-                    if Keybind.ModeSelected == "Hold" then 
+                local matched = false
+                if Keybind.CodeName then
+                    matched = Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Keybind.CodeName
+                elseif Keybind.Key then
+                    matched = tostring(Input.UserInputType) == Keybind.Key
+                end
+
+                if matched then
+                    if Keybind.ModeSelected == "Hold" then
                         Keybind:Press(false)
-                    elseif Keybind.ModeSelected == "Always" then 
-                        Keybind:Press(true)
-                    end
-                elseif tostring(Input.UserInputType) == Keybind.Key then
-                    if Keybind.ModeSelected == "Hold" then 
-                        Keybind:Press(false)
-                    elseif Keybind.ModeSelected == "Always" then 
+                    elseif Keybind.ModeSelected == "Always" then
                         Keybind:Press(true)
                     end
                 end
-            end)
-
-            Items["Toggle"]:Connect("MouseButton1Down", function()
-                Keybind.ModeSelected = "Toggle"
-                Keybind:SetMode("Toggle")
-            end)
-
-            Items["Hold"]:Connect("MouseButton1Down", function()
-                Keybind.ModeSelected = "Hold"
-                Keybind:SetMode("Hold")
-            end)
-
-            Items["Always"]:Connect("MouseButton1Down", function()
-                Keybind.ModeSelected = "Always"
-                Keybind:SetMode("Always")
             end)
 
             if Keybind.Default then 
@@ -8502,8 +8578,13 @@ local Library do
             return Divider
         end
 
-    Library.CreateSettingsPage = function(self, Window, KeybindList)
-        local Page = Window:Page({Name = "UI Settings", Icon = "settings"})
+    Library.CreateSettingsPage = function(self, Window, KeybindList, Options)
+        Options = Options or {}
+        local pageInfo = { Name = "UI Settings", Icon = "settings" }
+        if Options.PinToBottom == true or Options.pinToBottom == true then
+            pageInfo.LayoutOrder = 999
+        end
+        local Page = Window:Page(pageInfo)
 
         local UISection = Page:Section({Name = "Appearance", Icon = "palette", Side = 1}) do
             UISection:Label("Accent color"):Colorpicker({
@@ -8527,8 +8608,8 @@ local Library do
             UISection:Dropdown({
                 Name = "Font weight",
                 Flag = "FontStyle",
-                Default = "SemiBold",
-                Items = {"Light", "Regular", "SemiBold"},
+                Default = "Light",
+                Items = { "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold" },
                 Callback = function(Value)
                     local FontData = Library.Fonts[Value]
                     if FontData then
