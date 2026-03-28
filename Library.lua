@@ -351,14 +351,16 @@ local Library do
             for Index, Value in Descendants do 
                 local TransparencyProperty = Tween:GetProperty(Value)
 
-                if TransparencyProperty then
-                    if type(TransparencyProperty) == "table" then 
-                        for _, Property in TransparencyProperty do 
-                            NewTween = Tween:FadeItem(Value, Property, not Visibility, Speed)
-                        end
-                    else
-                        NewTween = Tween:FadeItem(Value, TransparencyProperty, not Visibility, Speed)
+                if not TransparencyProperty then 
+                    continue
+                end
+
+                if type(TransparencyProperty) == "table" then 
+                    for _, Property in TransparencyProperty do 
+                        NewTween = Tween:FadeItem(Value, Property, not Visibility, Speed)
                     end
+                else
+                    NewTween = Tween:FadeItem(Value, TransparencyProperty, not Visibility, Speed)
                 end
             end
         end
@@ -427,24 +429,19 @@ local Library do
             local Gui = self.Instance
             local Dragging = false 
             local GrabOffsetScreen = nil
-            local ActiveDragTween = nil
-            local dragSmooth = 0.22
+            local TargetPos = nil
+            local LerpPos = nil
+            local dragSmooth = 0.24
 
-            local function setPositionFromAbsolute(targetAbsX, targetAbsY)
+            local function clampToParent(topLeftX, topLeftY)
                 local parent = Gui.Parent
-                if not parent then return end
+                if not parent then return topLeftX, topLeftY end
                 local pap = parent.AbsolutePosition
                 local psz = parent.AbsoluteSize
                 local gs = Gui.AbsoluteSize
-                local nx = MathClamp(targetAbsX, pap.X, pap.X + MathMax(0, psz.X - gs.X))
-                local ny = MathClamp(targetAbsY, pap.Y, pap.Y + MathMax(0, psz.Y - gs.Y))
-                local goal = UDim2FromOffset(nx - pap.X, ny - pap.Y)
-                if ActiveDragTween then
-                    pcall(function() ActiveDragTween:Cancel() end)
-                    ActiveDragTween = nil
-                end
-                ActiveDragTween = TweenService:Create(Gui, TweenInfo.new(dragSmooth, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = goal})
-                ActiveDragTween:Play()
+                local nx = MathClamp(topLeftX, pap.X, pap.X + MathMax(0, psz.X - gs.X))
+                local ny = MathClamp(topLeftY, pap.Y, pap.Y + MathMax(0, psz.Y - gs.Y))
+                return nx, ny
             end
         
             local InputChanged
@@ -455,6 +452,13 @@ local Library do
                     local m = UserInputService:GetMouseLocation()
                     local ap = Gui.AbsolutePosition
                     GrabOffsetScreen = Vector2.new(m.X - ap.X, m.Y - ap.Y)
+                    local nx, ny = clampToParent(m.X - GrabOffsetScreen.X, m.Y - GrabOffsetScreen.Y)
+                    local parent = Gui.Parent
+                    if parent then
+                        local pap = parent.AbsolutePosition
+                        LerpPos = Vector2.new(nx - pap.X, ny - pap.Y)
+                        TargetPos = LerpPos
+                    end
 
                     if InputChanged then 
                         return
@@ -464,6 +468,7 @@ local Library do
                         if Input.UserInputState == Enum.UserInputState.End then
                             Dragging = false
                             GrabOffsetScreen = nil
+                            TargetPos = nil
                             InputChanged:Disconnect()
                             InputChanged = nil
                         end
@@ -471,11 +476,16 @@ local Library do
                 end
             end)
         
-            Library:Connect(UserInputService.InputChanged, function(Input)
-                if not Dragging or not GrabOffsetScreen then return end
-                if Input.UserInputType ~= Enum.UserInputType.MouseMovement and Input.UserInputType ~= Enum.UserInputType.Touch then return end
+            Library:Connect(RunService.RenderStepped, function()
+                if not Dragging or not GrabOffsetScreen or not LerpPos then return end
                 local now = UserInputService:GetMouseLocation()
-                setPositionFromAbsolute(now.X - GrabOffsetScreen.X, now.Y - GrabOffsetScreen.Y)
+                local nx, ny = clampToParent(now.X - GrabOffsetScreen.X, now.Y - GrabOffsetScreen.Y)
+                local parent = Gui.Parent
+                if not parent then return end
+                local pap = parent.AbsolutePosition
+                TargetPos = Vector2.new(nx - pap.X, ny - pap.Y)
+                LerpPos = LerpPos:Lerp(TargetPos, dragSmooth)
+                Gui.Position = UDim2FromOffset(LerpPos.X, LerpPos.Y)
             end)
         
             return Dragging
@@ -797,8 +807,6 @@ local Library do
         Parent = Library.Holder.Instance,
         Name = "\0",
         BackgroundTransparency = 1,
-        AnchorPoint = Vector2New(1, 0),
-        Position = UDim2New(1, 0, 0, 0),
         Size = UDim2New(0, 0, 1, 0),
         BorderColor3 = FromRGB(0, 0, 0),
         BorderSizePixel = 0,
@@ -809,9 +817,6 @@ local Library do
     Instances:Create("UIListLayout", {
         Parent = Library.NotifHolder.Instance,
         Name = "\0",
-        FillDirection = Enum.FillDirection.Vertical,
-        HorizontalAlignment = Enum.HorizontalAlignment.Right,
-        VerticalAlignment = Enum.VerticalAlignment.Top,
         Padding = UDimNew(0, 12),
         SortOrder = Enum.SortOrder.LayoutOrder
     })
@@ -840,7 +845,13 @@ local Library do
         if Library.BlurInstances then
             for _, blur in ipairs(Library.BlurInstances) do
                 pcall(function()
-                    if typeof(blur) == "Instance" then blur:Destroy() end
+                    if typeof(blur) == "Instance" then
+                        if blur:IsA("DepthOfFieldEffect") then
+                            blur.NearIntensity = 0
+                            blur.FarIntensity = 0
+                        end
+                        blur:Destroy()
+                    end
                 end)
             end
             table.clear(Library.BlurInstances)
@@ -848,7 +859,11 @@ local Library do
 
         for _, inst in ipairs(Lighting:GetChildren()) do
             if inst:IsA("DepthOfFieldEffect") then
-                pcall(function() inst:Destroy() end)
+                pcall(function()
+                    inst.NearIntensity = 0
+                    inst.FarIntensity = 0
+                    inst:Destroy()
+                end)
             end
         end
         pcall(function() Lighting.Blur.Size = 0 end)
@@ -984,14 +999,16 @@ local Library do
             for Index, Value in Decoded do 
                 local SetFunction = Library.SetFlags[Index]
 
-                if SetFunction then
-                    if type(Value) == "table" and Value.Key then 
-                        SetFunction(Value)
-                    elseif type(Value) == "table" and Value.Color then
-                        SetFunction(Value.Color, Value.Alpha)
-                    else
-                        SetFunction(Value)
-                    end
+                if not SetFunction then
+                    continue
+                end
+
+                if type(Value) == "table" and Value.Key then 
+                    SetFunction(Value)
+                elseif type(Value) == "table" and Value.Color then
+                    SetFunction(Value.Color, Value.Alpha)
+                else
+                    SetFunction(Value)
                 end
             end
         end)
@@ -1879,18 +1896,20 @@ local Library do
                 for Index, Value in Descendants do 
                     local TransparencyProperty = Tween:GetProperty(Value)
 
-                    if TransparencyProperty then
-                        if not Value.ClassName:find("UI") then 
-                            Value.ZIndex = (Colorpicker.IsOpen and Data.Section.IsSettings and 9) or (Colorpicker.IsOpen and not Data.Section.IsSettings and 3) or 1
-                        end
+                    if not TransparencyProperty then
+                        continue 
+                    end
 
-                        if type(TransparencyProperty) == "table" then 
-                            for _, Property in TransparencyProperty do 
-                                NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
-                            end
-                        else
-                            NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
+                    if not Value.ClassName:find("UI") then 
+                        Value.ZIndex = (Colorpicker.IsOpen and Data.Section.IsSettings and 9) or (Colorpicker.IsOpen and not Data.Section.IsSettings and 3) or 1
+                    end
+
+                    if type(TransparencyProperty) == "table" then 
+                        for _, Property in TransparencyProperty do 
+                            NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
                         end
+                    else
+                        NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
                     end
                 end
                 
@@ -2358,8 +2377,7 @@ local Library do
                     BackgroundTransparency = 0.35,
                     BorderColor3 = FromRGB(0, 0, 0),
                     BorderSizePixel = 0,
-                    Size = UDim2New(0, 340, 0, 0),
-                    AutomaticSize = Enum.AutomaticSize.Y,
+                    AutomaticSize = Enum.AutomaticSize.XY,
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })
 
@@ -2391,6 +2409,8 @@ local Library do
                 Items["TitleRow"] = Instances:Create("Frame", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
+                    LayoutOrder = 1,
+                    ZIndex = 3,
                     BackgroundTransparency = 1,
                     Size = UDim2New(1, 0, 0, 18),
                     BorderSizePixel = 0,
@@ -2447,6 +2467,8 @@ local Library do
                 Items["Description"] = Instances:Create("TextLabel", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
+                    LayoutOrder = 2,
+                    ZIndex = 2,
                     FontFace = Library.Font,
                     TextColor3 = FromRGB(255, 255, 255),
                     TextTransparency = 0.30000001192092896,
@@ -2464,19 +2486,22 @@ local Library do
                 Items["BarTrack"] = Instances:Create("Frame", {
                     Parent = Items["Notification"].Instance,
                     Name = "\0",
+                    LayoutOrder = 3,
+                    ZIndex = 1,
                     BackgroundTransparency = 1,
-                    Size = UDim2New(1, 0, 0, 6),
+                    Size = UDim2New(1, 0, 0, 5),
                     BorderSizePixel = 0,
+                    ClipsDescendants = true,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })
 
                 Items["Accent"] = Instances:Create("Frame", {
                     Parent = Items["BarTrack"].Instance,
                     Name = "\0",
-                    AnchorPoint = Vector2New(0, 0.5),
-                    Position = UDim2New(0, 0, 0.5, 0),
+                    AnchorPoint = Vector2New(0, 1),
+                    Position = UDim2New(0, 0, 1, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
-                    Size = UDim2New(0, 0, 0, 4),
+                    Size = UDim2New(0, 0, 0, 3),
                     BorderSizePixel = 0,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })
@@ -2503,7 +2528,7 @@ local Library do
             Items["Icon"].Instance.ImageTransparency = 1
             Items["Notification"].Instance.BackgroundTransparency = 1
             Items["Accent"].Instance.BackgroundTransparency = 1
-            Items["Accent"].Instance.Size = UDim2New(0, 0, 0, 4)
+            Items["Accent"].Instance.Size = UDim2New(0, 0, 0, 3)
 
             task.spawn(function()
                 task.wait(0.05)
@@ -2513,12 +2538,15 @@ local Library do
                 Items["Notification"]:Tween(fadeInfo, {BackgroundTransparency = 0.35})
                 Items["Accent"]:Tween(fadeInfo, {BackgroundTransparency = 0})
 
-                local hold = math.clamp(tonumber(Data.Duration) or 3, 0.5, 120)
-                task.wait(0.15)
+                local hold = math.clamp(tonumber(Data.Duration or Data.Time) or 3, 0.5, 120)
+                task.wait(0.2)
                 local track = Items["BarTrack"].Instance.AbsoluteSize.X
-                local barW = math.max(40, track)
-                Items["Accent"].Instance.Size = UDim2New(0, barW, 0, 4)
-                Items["Accent"]:Tween(TweenInfo.new(hold, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(0, 0, 0, 4)})
+                if track < 8 then
+                    track = Items["Notification"].Instance.AbsoluteSize.X - 16
+                end
+                local barW = math.max(24, track)
+                Items["Accent"].Instance.Size = UDim2New(0, barW, 0, 3)
+                Items["Accent"]:Tween(TweenInfo.new(hold, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Size = UDim2New(0, 0, 0, 3)})
 
                 task.wait(hold + 0.05)
 
@@ -2751,8 +2779,8 @@ local Library do
                         Text = "",
                         AutoButtonColor = false,
                         Name = "\0",
-                        Position = IsMobile and UDim2New(0.5, 0, 0, 20) or UDim2New(1, -76, 0, 24),
-                        AnchorPoint = IsMobile and Vector2New(0.5, 0) or Vector2New(1, 0),
+                        Position = IsMobile and UDim2New(0.5, -27, 0, 20) or UDim2New(1, -130, 0, 24),
+                        AnchorPoint = Vector2New(0, 0),
                         Visible = true,
                         BorderColor3 = FromRGB(0, 0, 0),
                         Size = UDim2New(0, 54, 0, 54),
@@ -2858,7 +2886,7 @@ local Library do
                         local newAbsY = MathClamp(now.Y - floatGrabOffset.Y, p0.Y, p0.Y + MathMax(0, psz.Y - sz.Y))
                         local gx = newAbsX - p0.X
                         local gy = newAbsY - p0.Y
-                        floatLerpPos = floatLerpPos:Lerp(Vector2New(gx, gy), 0.28)
+                        floatLerpPos = floatLerpPos:Lerp(Vector2New(gx, gy), 0.22)
                         inst.Position = UDim2FromOffset(floatLerpPos.X, floatLerpPos.Y)
                     end)
                 end
@@ -3034,181 +3062,6 @@ local Library do
                     CornerRadius = UDimNew(0, 7)
                 })
 
-                do
-                    Items["LeftBottomPixels"] = Instances:Create("Frame", {
-                        Parent = Items["MainFrame"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(1, 1),
-                        BackgroundTransparency = 1,
-                        Position = UDim2New(0, 1, 1, 0),
-                        Size = UDim2New(0, 5, 0, 5),
-                        ZIndex = 2,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })
-                    
-                    Items["___1"] = Instances:Create("Frame", {
-                        Parent = Items["LeftBottomPixels"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(0, 1),
-                        BackgroundTransparency = 0.11999999731779099,
-                        Position = UDim2New(0, 2, 1, 0),
-                        Size = UDim2New(0, 1, 0, 1),
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___1"]:AddToTheme({BackgroundColor3 = "Background"})
-                    
-                    Items["___2"] = Instances:Create("Frame", {
-                        Parent = Items["LeftBottomPixels"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(0, 1),
-                        BackgroundTransparency = 0.11999999731779099,
-                        Position = UDim2New(0, 4, 1, 0),
-                        Size = UDim2New(0, 1, 0, 1),
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___2"]:AddToTheme({BackgroundColor3 = "Background"})
-                    
-                    Items["___3"] = Instances:Create("Frame", {
-                        Parent = Items["LeftBottomPixels"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(0, 1),
-                        BackgroundTransparency = 0.11999999731779099,
-                        Position = UDim2New(0, 3, 1, 0),
-                        Size = UDim2New(0, 1, 0, 1),
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___3"]:AddToTheme({BackgroundColor3 = "Background"})
-                    
-                    Items["___4"] = Instances:Create("Frame", {
-                        Parent = Items["LeftBottomPixels"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(0, 1),
-                        BackgroundTransparency = 0.11999999731779099,
-                        Position = UDim2New(0, 3, 1, -1),
-                        Size = UDim2New(0, 1, 0, 1),
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___4"]:AddToTheme({BackgroundColor3 = "Background"})
-                    
-                    Items["___5"] = Instances:Create("Frame", {
-                        Parent = Items["LeftBottomPixels"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(0, 1),
-                        BackgroundTransparency = 0.11999999731779099,
-                        Position = UDim2New(0, 4, 1, -1),
-                        Size = UDim2New(0, 1, 0, 1),
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___5"]:AddToTheme({BackgroundColor3 = "Background"})
-                    
-                    Items["___6"] = Instances:Create("Frame", {
-                        Parent = Items["LeftBottomPixels"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(0, 1),
-                        BackgroundTransparency = 0.11999999731779099,
-                        Position = UDim2New(0, 5, 1, 0),
-                        Size = UDim2New(0, 1, 0, 1),
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___6"]:AddToTheme({BackgroundColor3 = "Background"})
-                    
-                    
-                    
-                    Items["LeftTopPixels"] = Instances:Create("Frame", {
-                        Parent = Items["MainFrame"].Instance,
-                        Name = "\0",
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        AnchorPoint = Vector2New(1, 0),
-                        BackgroundTransparency = 1,
-                        Visible = false,
-                        Position = UDim2New(0, 1, 0, 0),
-                        Size = UDim2New(0, 5, 0, 5),
-                        ZIndex = 2,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })
-                    
-                    Items["___7"] = Instances:Create("Frame", {
-                        Parent = Items["LeftTopPixels"].Instance,
-                        Name = "\0",
-                        Size = UDim2New(0, 1, 0, 1),
-                        Position = UDim2New(0, 2, 0, 0),
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        ZIndex = 2,
-                        BackgroundTransparency = 0.12,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___7"]:AddToTheme({BackgroundColor3 = "Background"})   
-                    
-                    Items["___8"]= Instances:Create("Frame", {
-                        Parent = Items["LeftTopPixels"].Instance,
-                        Name = "\0",
-                        Size = UDim2New(0, 1, 0, 1),
-                        BackgroundTransparency = 0.12,
-                        Position = UDim2New(0, 3, 0, 0),
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        ZIndex = 2,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___8"]:AddToTheme({BackgroundColor3 = "Background"})   
-                    
-                    Items["___9"]= Instances:Create("Frame", {
-                        Parent = Items["LeftTopPixels"].Instance,
-                        Name = "\0",
-                        Size = UDim2New(0, 1, 0, 1),
-                        Position = UDim2New(0, 4, 0, 0),
-                        BackgroundTransparency = 0.12,
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        ZIndex = 2,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___9"]:AddToTheme({BackgroundColor3 = "Background"})   
-                    
-                    Items["___10"] = Instances:Create("Frame", {
-                        Parent = Items["LeftTopPixels"].Instance,
-                        Name = "\0",
-                        Size = UDim2New(0, 1, 0, 1),
-                        Position = UDim2New(0, 5, 0, 0),
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        BackgroundTransparency = 0.12,
-                        ZIndex = 2,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___10"]:AddToTheme({BackgroundColor3 = "Background"})   
-                    
-                    Items["___11"]=Instances:Create("Frame", {
-                        Parent = Items["LeftTopPixels"].Instance,
-                        Name = "\0",
-                        Size = UDim2New(0, 1, 0, 1),
-                        Position = UDim2New(0, 3, 0, 1),
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        ZIndex = 2,
-                        BackgroundTransparency = 0.12,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___11"]:AddToTheme({BackgroundColor3 = "Background"})   
-                    
-                    Items["___12"] = Instances:Create("Frame", {
-                        Parent = Items["LeftTopPixels"].Instance,
-                        Name = "\0",
-                        Size = UDim2New(0, 1, 0, 1),
-                        Position = UDim2New(0, 4, 0, 1),
-                        BorderColor3 = FromRGB(0, 0, 0),
-                        ZIndex = 2,
-                        BackgroundTransparency = 0.12,
-                        BorderSizePixel = 0,
-                        BackgroundColor3 = FromRGB(255, 255, 255)
-                    })  Items["___12"]:AddToTheme({BackgroundColor3 = "Background"})                                      
-                end
-
                 function Window:SetTransparency()
                     Items["MainFrame"].Instance.BackgroundTransparency = Library.Flags["BackgroundTransparency"] 
                     Items["LeftTabs"].Instance.BackgroundTransparency = Library.Flags["BackgroundTransparency"]  
@@ -3217,12 +3070,6 @@ local Library do
                         Items["FloatingButton"].Instance.Visible = showFloat
                         if showFloat then
                             Items["FloatingButton"].Instance.BackgroundTransparency = Library.Flags["BackgroundTransparency"]
-                        end
-                    end
-
-                    for _, Value in Items do 
-                        if _:find("___") then
-                            Value.Instance.BackgroundTransparency = tonumber(Library.Flags["BackgroundTransparency"])
                         end
                     end
                 end
@@ -3370,14 +3217,16 @@ local Library do
                 for Index, Value in Descendants do 
                     local TransparencyProperty = Tween:GetProperty(Value)
 
-                    if TransparencyProperty then
-                        if type(TransparencyProperty) == "table" then 
-                            for _, Property in TransparencyProperty do 
-                                NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
-                            end
-                        else
-                            NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
+                    if not TransparencyProperty then
+                        continue 
+                    end
+
+                    if type(TransparencyProperty) == "table" then 
+                        for _, Property in TransparencyProperty do 
+                            NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
                         end
+                    else
+                        NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
                     end
                 end
                 
@@ -3416,8 +3265,8 @@ local Library do
                         sc.Parent = mf
                     end
                     local targetScale = sc.Scale > 0 and sc.Scale or 1
-                    sc.Scale = targetScale * 0.94
-                    TweenService:Create(sc, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
+                    sc.Scale = targetScale * 0.88
+                    TweenService:Create(sc, TweenInfo.new(0.62, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
                 end)
             end
 
@@ -3568,10 +3417,7 @@ local Library do
         end
 
         Library.Category = function(self, Name)
-            if Name == nil or Name == "" then
-                return
-            end
-            local Items = { } do
+            local Items = { } do 
                 Items["Category"] = Instances:Create("TextLabel", {
                     Parent = self.Items["LeftTabsScroll"].Instance,
                     Name = "\0",
@@ -3589,7 +3435,7 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  Items["Category"]:AddToTheme({TextColor3 = "Text"})
-            end
+            end                
         end
 
         Library.TabDivider = function(self)
@@ -4182,11 +4028,11 @@ local Library do
                         CornerRadius = UDimNew(1, 0)
                     })
 
-                    Instances:Create("UIStroke", {
+                    local linkStroke = Instances:Create("UIStroke", {
                         Parent = linkBtn.Instance,
                         Name = "\0",
-                        Thickness = 3,
-                        Transparency = 0.12,
+                        Thickness = 2,
+                        Transparency = 0.55,
                     }):AddToTheme({Color = "Accent"})
 
                     local linkIcon = Instances:Create("ImageLabel", {
@@ -4214,11 +4060,13 @@ local Library do
                     end)
                     linkBtn:OnHover(function()
                         linkBtn:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0})
-                        linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.28})
+                        linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.15})
+                        linkStroke:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {Thickness = 2.5, Transparency = 0.08})
                     end)
                     linkBtn:OnHoverLeave(function()
                         linkBtn:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.1})
                         linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 1})
+                        linkStroke:Tween(TweenInfo.new(0.35, Enum.EasingStyle.Quart), {Thickness = 2, Transparency = 0.55})
                     end)
                     if link.Tooltip then
                         Library:AttachTooltip(linkBtn.Instance, link.Tooltip)
@@ -4228,13 +4076,12 @@ local Library do
                 Instances:Create("Frame", {
                     Parent = LeftCol.Instance,
                     Name = "\0",
-                    BackgroundColor3 = FromRGB(52, 50, 62),
                     Position = UDim2New(0, 0, 0, 120),
-                    Size = UDim2New(1, 0, 0, 2),
+                    Size = UDim2New(1, 0, 0, 1),
                     BorderSizePixel = 0,
                     ZIndex = 2,
-                    BackgroundTransparency = 0
-                })
+                    BackgroundTransparency = 0.42
+                }):AddToTheme({BackgroundColor3 = "Element"})
 
                 DashItems["GameName"] = Instances:Create("TextLabel", {
                     Parent = LeftCol.Instance,
@@ -4274,13 +4121,12 @@ local Library do
                 Instances:Create("Frame", {
                     Parent = LeftCol.Instance,
                     Name = "\0",
-                    BackgroundColor3 = FromRGB(52, 50, 62),
                     Position = UDim2New(0, 0, 0, 195),
-                    Size = UDim2New(1, 0, 0, 2),
+                    Size = UDim2New(1, 0, 0, 1),
                     BorderSizePixel = 0,
                     ZIndex = 2,
-                    BackgroundTransparency = 0
-                })
+                    BackgroundTransparency = 0.42
+                }):AddToTheme({BackgroundColor3 = "Element"})
 
                 local RightCol = Instances:Create("Frame", {
                     Parent = DashItems["HeroRow"].Instance,
@@ -5312,9 +5158,11 @@ local Library do
             end)
 
             for Index, Value in Items["GlobalChat"].Instance:GetDescendants() do 
-                if not Value.ClassName:find("UI") then 
-                    Value.ZIndex = 2
+                if Value.ClassName:find("UI") then 
+                    continue 
                 end
+
+                Value.ZIndex = 2
             end
 
             Items["GlobalChat"].Instance.ZIndex = 2
@@ -6081,18 +5929,20 @@ local Library do
                     for Index, Value in Descendants do 
                         local TransparencyProperty = Tween:GetProperty(Value)
     
-                        if TransparencyProperty then
-                            if not Value.ClassName:find("UI") then 
-                                Value.ZIndex = Settings.IsOpen and 7 or 1
-                            end
+                        if not TransparencyProperty then
+                            continue 
+                        end
     
-                            if type(TransparencyProperty) == "table" then 
-                                for _, Property in TransparencyProperty do 
-                                    NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
-                                end
-                            else
-                                NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
+                        if not Value.ClassName:find("UI") then 
+                            Value.ZIndex = Settings.IsOpen and 7 or 1
+                        end
+    
+                        if type(TransparencyProperty) == "table" then 
+                            for _, Property in TransparencyProperty do 
+                                NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
                             end
+                        else
+                            NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
                         end
                     end
                     
@@ -7008,18 +6858,20 @@ local Library do
                 for Index, Value in Descendants do 
                     local TransparencyProperty = Tween:GetProperty(Value)
 
-                    if TransparencyProperty then
-                        if not Value.ClassName:find("UI") then 
-                            Value.ZIndex = (Dropdown.IsOpen and Dropdown.Section.IsSettings and 8) or (Dropdown.IsOpen and 3) or 1
-                        end
+                    if not TransparencyProperty then
+                        continue 
+                    end
 
-                        if type(TransparencyProperty) == "table" then 
-                            for _, Property in TransparencyProperty do 
-                                NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
-                            end
-                        else
-                            NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
+                    if not Value.ClassName:find("UI") then 
+                        Value.ZIndex = (Dropdown.IsOpen and Dropdown.Section.IsSettings and 8) or (Dropdown.IsOpen and 3) or 1
+                    end
+
+                    if type(TransparencyProperty) == "table" then 
+                        for _, Property in TransparencyProperty do 
+                            NewTween = Tween:FadeItem(Value, Property, Bool, Library.FadeSpeed)
                         end
+                    else
+                        NewTween = Tween:FadeItem(Value, TransparencyProperty, Bool, Library.FadeSpeed)
                     end
                 end
                 
@@ -7042,10 +6894,13 @@ local Library do
 
                     for Index, Value in Option do
                         local OptionData = Dropdown.Options[Value]
-                        if OptionData then
-                            OptionData.Selected = true 
-                            OptionData:Toggle("Active")
+                         
+                        if not OptionData then
+                            continue
                         end
+
+                        OptionData.Selected = true 
+                        OptionData:Toggle("Active")
                     end
 
                     Items["Value"].Instance.Text = TableConcat(Option, ", ")
@@ -8641,10 +8496,28 @@ local Library do
     Library.CreateSettingsPage = function(self, Window, KeybindList, Options)
         Options = Options or {}
         local pageInfo = { Name = "UI Settings", Icon = "settings" }
-        if Options.PinToBottom == true or Options.pinToBottom == true then
-            pageInfo.LayoutOrder = 100000
-        end
         local Page = Window:Page(pageInfo)
+        local pinBottom = Options.PinToBottom == true or Options.pinToBottom == true
+        if pinBottom then
+            task.defer(function()
+                task.wait()
+                local scroll = Window.Items and Window.Items.LeftTabsScroll and Window.Items.LeftTabsScroll.Instance
+                local tabBtn = Page.Items and Page.Items.Inactive and Page.Items.Inactive.Instance
+                if not scroll or not tabBtn then
+                    return
+                end
+                local maxO = 0
+                for _, ch in scroll:GetChildren() do
+                    if ch:IsA("GuiObject") and ch ~= tabBtn then
+                        local lo = ch.LayoutOrder
+                        if type(lo) == "number" and lo > maxO then
+                            maxO = lo
+                        end
+                    end
+                end
+                tabBtn.LayoutOrder = maxO + 1
+            end)
+        end
 
         local UISection = Page:Section({Name = "Appearance", Icon = "palette", Side = 1}) do
             UISection:Label("Accent color"):Colorpicker({
