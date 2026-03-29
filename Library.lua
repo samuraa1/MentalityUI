@@ -540,7 +540,7 @@ local Library do
                 local ty = ny - pap.Y + ap.Y * gs.Y
                 local cur = Gui.Position
                 local cx, cy = cur.X.Offset, cur.Y.Offset
-                local a = MathClamp(lerpK * (1 / math.max(dt, 1 / 240)), 0.06, 0.5)
+                local a = MathClamp(lerpK * (1 / math.max(dt, 1 / 240)), 0.03, 0.28)
                 Gui.Position = UDim2FromOffset(cx + (tx - cx) * a, cy + (ty - cy) * a)
             end)
         end
@@ -2236,7 +2236,7 @@ local Library do
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["KeybindsList"]:AddToTheme({BackgroundColor3 = "Section Background"})
 
-                Items["KeybindsList"]:MakeDraggableLerp(0.2)
+                Items["KeybindsList"]:MakeDraggableLerp(0.075)
                 
                 Instances:Create("UICorner", {
                     Parent = Items["KeybindsList"].Instance,
@@ -2779,15 +2779,21 @@ local Library do
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["LeftTabs"]:AddToTheme({BackgroundColor3 = "Background"})
 
-                -- No UICorner on LeftTabs: double rounding vs MainFrame caused a dark pixel at bottom-left.
+                Instances:Create("UICorner", {
+                    Parent = Items["LeftTabs"].Instance,
+                    Name = "\0",
+                    CornerRadius = UDimNew(0, 14),
+                })
+
+                -- Inset scroll 1px so canvas/scrollbar does not sit on the rounded edge (reduces corner seam).
 
                 Items["LeftTabsScroll"] = Instances:Create("ScrollingFrame", {
                     Parent = Items["LeftTabs"].Instance,
                     Name = "\0",
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Size = UDim2New(1, 0, 1, 0),
-                    Position = UDim2New(0, 0, 0, 0),
+                    Size = UDim2New(1, -2, 1, -1),
+                    Position = UDim2New(0, 1, 0, 0),
                     AnchorPoint = Vector2New(0, 0),
                     CanvasSize = UDim2New(0, 0, 0, 0),
                     AutomaticCanvasSize = Enum.AutomaticSize.Y,
