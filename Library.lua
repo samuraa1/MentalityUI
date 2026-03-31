@@ -2778,9 +2778,31 @@ local Library do
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["LeftTabs"]:AddToTheme({BackgroundColor3 = "Background"})
 
-                -- No UICorner here: MainFrame already has UICorner + ClipsDescendants, so the sidebar is clipped
-                -- to the window curve. A second UICorner on LeftTabs caused a sub-pixel seam / black speck
-                -- at the bottom-left; the parent clip keeps the same outer roundness.
+                Instances:Create("UICorner", {
+                    Parent = Items["LeftTabs"].Instance,
+                    Name = "\0",
+                    CornerRadius = UDimNew(0, 14),
+                })
+
+                -- Covers a 1px anti-alias gap at the inner bottom-left (stray dark pixel) without removing rounding.
+                Items["LeftTabCornerSeal"] = Instances:Create("Frame", {
+                    Parent = Items["LeftTabs"].Instance,
+                    Name = "\0",
+                    AnchorPoint = Vector2New(0, 1),
+                    Position = UDim2New(0, 0, 1, 0),
+                    Size = UDim2New(0, 18, 0, 18),
+                    BackgroundTransparency = 0.12,
+                    BorderSizePixel = 0,
+                    ZIndex = 1,
+                    ClipsDescendants = false,
+                    BackgroundColor3 = FromRGB(27, 25, 29)
+                })
+                Items["LeftTabCornerSeal"]:AddToTheme({BackgroundColor3 = "Background"})
+                Instances:Create("UICorner", {
+                    Parent = Items["LeftTabCornerSeal"].Instance,
+                    Name = "\0",
+                    CornerRadius = UDimNew(0, 14),
+                })
 
                 Items["LeftTabsScroll"] = Instances:Create("ScrollingFrame", {
                     Parent = Items["LeftTabs"].Instance,
