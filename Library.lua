@@ -2646,10 +2646,13 @@ local Library do
             }
 
             local Items = { } do
+                -- Same radius everywhere as MainFrame top-left (outer shell).
+                local WINDOW_CORNER_RADIUS = 14
+
                 Items["MainFrame"] = Instances:Create("Frame", {
                     Parent = Library.Holder.Instance,
                     Name = "\0",
-                    BorderColor3 = FromRGB(0, 0, 0),
+                    BorderColor3 = Library.Theme.Background,
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
                     Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
@@ -2658,11 +2661,11 @@ local Library do
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
                     BackgroundColor3 = FromRGB(27, 25, 29)
-                })  Items["MainFrame"]:AddToTheme({BackgroundColor3 = "Background"})
+                })  Items["MainFrame"]:AddToTheme({BackgroundColor3 = "Background", BorderColor3 = "Background"})
 
                 Instances:Create("UICorner", {
                     Parent = Items["MainFrame"].Instance,
-                    CornerRadius = UDimNew(0, 14)
+                    CornerRadius = UDimNew(0, WINDOW_CORNER_RADIUS)
                 })
 
                 if IsMobile then 
@@ -2781,19 +2784,8 @@ local Library do
                 Instances:Create("UICorner", {
                     Parent = Items["LeftTabs"].Instance,
                     Name = "\0",
-                    CornerRadius = UDimNew(0, 14),
+                    CornerRadius = UDimNew(0, WINDOW_CORNER_RADIUS),
                 })
-
-                -- Same radius as MainFrame. Black border default + corner AA caused a stray dark pixel; border matches Background, stroke fills edge gaps.
-                Instances:Create("UIStroke", {
-                    Parent = Items["LeftTabs"].Instance,
-                    Name = "\0",
-                    Thickness = 1,
-                    Transparency = 0,
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-                    LineJoinMode = Enum.LineJoinMode.Round,
-                    Color = Library.Theme.Background,
-                }):AddToTheme({Color = "Background"})
 
                 Items["LeftTabsScroll"] = Instances:Create("ScrollingFrame", {
                     Parent = Items["LeftTabs"].Instance,
@@ -3080,7 +3072,7 @@ local Library do
                 Items["Content"] = Instances:Create("Frame", {
                     Parent = Items["MainFrame"].Instance,
                     Name = "\0",
-                    BorderColor3 = FromRGB(0, 0, 0),
+                    BorderColor3 = Library.Theme.Background,
                     BackgroundTransparency = 0.75,
                     Position = UDim2New(0, 225, 0, 55),
                     Size = UDim2New(1, -225, 1, -55),
@@ -3088,12 +3080,12 @@ local Library do
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
                     BackgroundColor3 = FromRGB(27, 25, 29)
-                })  Items["Content"]:AddToTheme({BackgroundColor3 = "Background"})
+                })  Items["Content"]:AddToTheme({BackgroundColor3 = "Background", BorderColor3 = "Background"})
 
                 Instances:Create("UICorner", {
                     Parent = Items["Content"].Instance,
                     Name = "\0",
-                    CornerRadius = UDimNew(0, 12)
+                    CornerRadius = UDimNew(0, WINDOW_CORNER_RADIUS)
                 })
 
                 Items["CloseButton"] = Instances:Create("TextButton", {
