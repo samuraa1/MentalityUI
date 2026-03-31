@@ -540,7 +540,7 @@ local Library do
                 local ty = ny - pap.Y + ap.Y * gs.Y
                 local cur = Gui.Position
                 local cx, cy = cur.X.Offset, cur.Y.Offset
-                local a = MathClamp(lerpK * (1 / math.max(dt, 1 / 240)), 0.03, 0.28)
+                local a = MathClamp(lerpK * (1 / math.max(dt, 1 / 240)), 0.02, 0.22)
                 Gui.Position = UDim2FromOffset(cx + (tx - cx) * a, cy + (ty - cy) * a)
             end)
         end
@@ -2236,7 +2236,7 @@ local Library do
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["KeybindsList"]:AddToTheme({BackgroundColor3 = "Section Background"})
 
-                Items["KeybindsList"]:MakeDraggableLerp(0.075)
+                Items["KeybindsList"]:MakeDraggableLerp(0.05)
                 
                 Instances:Create("UICorner", {
                     Parent = Items["KeybindsList"].Instance,
@@ -2636,7 +2636,6 @@ local Library do
                 Name = Data.Name or Data.name or "Window",
                 SubName = Data.SubName or Data.subname or "Fine-tuning for sure wins",
                 Logo = Data.Logo or Data.logo or "1l20959262762131",
-                PinToBottom = Data.PinToBottom,
 
                 Pages = { },
                 Items = { },
@@ -2792,8 +2791,8 @@ local Library do
                     Name = "\0",
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Size = UDim2New(1, -2, 1, -1),
-                    Position = UDim2New(0, 1, 0, 0),
+                    Size = UDim2New(1, -2, 1, -2),
+                    Position = UDim2New(0, 1, 0, 1),
                     AnchorPoint = Vector2New(0, 0),
                     CanvasSize = UDim2New(0, 0, 0, 0),
                     AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -2862,8 +2861,8 @@ local Library do
                         Text = "",
                         AutoButtonColor = false,
                         Name = "\0",
-                        Position = IsMobile and UDim2New(0.5, 0, 0, 20) or UDim2New(1, -76, 0, 24),
-                        AnchorPoint = IsMobile and Vector2New(0.5, 0) or Vector2New(1, 0),
+                        Position = UDim2New(0.5, 0, 0, 20),
+                        AnchorPoint = Vector2New(0.5, 0),
                         Visible = true,
                         BorderColor3 = FromRGB(0, 0, 0),
                         Size = UDim2New(0, 54, 0, 54),
@@ -2919,7 +2918,7 @@ local Library do
                     local floatGrabOffset = nil
                     local floatMoved = false
                     local FLOAT_DRAG_PX = 8
-                    local FLOAT_LERP = 0.32
+                    local FLOAT_LERP = 0.15
 
                     Items["FloatingButton"]:Connect("InputBegan", function(Input)
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
@@ -2975,7 +2974,7 @@ local Library do
                         local cur = inst.Position
                         local cx = cur.X.Offset
                         local cy = cur.Y.Offset
-                        local a = math.clamp(FLOAT_LERP * (1 / math.max(dt, 1 / 240)), 0.08, 0.55)
+                        local a = math.clamp(FLOAT_LERP * (1 / math.max(dt, 1 / 240)), 0.06, 0.32)
                         inst.Position = UDim2FromOffset(cx + (tx - cx) * a, cy + (ty - cy) * a)
                     end)
                 end
@@ -4288,7 +4287,7 @@ local Library do
                         Thickness = 2.25,
                         LineJoinMode = Enum.LineJoinMode.Round,
                         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-                        Transparency = 0.38,
+                        Transparency = 1,
                     }):AddToTheme({Color = "Accent"})
 
                     local linkIcon = Instances:Create("ImageLabel", {
@@ -4325,7 +4324,17 @@ local Library do
                         linkBtn:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 0.1})
                         linkHoverRing:Tween(TweenInfo.new(0.2, Enum.EasingStyle.Quart), {BackgroundTransparency = 1})
                         if linkStroke and linkStroke.Instance then
-                            TweenService:Create(linkStroke.Instance, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {Transparency = 0.38}):Play()
+                            TweenService:Create(linkStroke.Instance, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {Transparency = 1}):Play()
+                        end
+                    end)
+                    linkBtn:Connect("InputBegan", function(inp)
+                        if inp.UserInputType == Enum.UserInputType.Touch and linkStroke and linkStroke.Instance then
+                            TweenService:Create(linkStroke.Instance, TweenInfo.new(0.15, Enum.EasingStyle.Quart), {Transparency = 0.06}):Play()
+                        end
+                    end)
+                    linkBtn:Connect("InputEnded", function(inp)
+                        if inp.UserInputType == Enum.UserInputType.Touch and linkStroke and linkStroke.Instance then
+                            TweenService:Create(linkStroke.Instance, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {Transparency = 1}):Play()
                         end
                     end)
                     if link.Tooltip then
@@ -4337,26 +4346,14 @@ local Library do
                     local d1 = Instances:Create("Frame", {
                         Parent = LeftCol.Instance,
                         Name = "\0",
-                        BackgroundColor3 = FromRGB(38, 36, 46),
+                        BackgroundColor3 = FromRGB(38, 36, 44),
                         Position = UDim2New(0, 0, 0, 119),
-                        Size = UDim2New(1, 0, 0, 2),
+                        Size = UDim2New(1, 0, 0, 1),
                         BorderSizePixel = 0,
                         ZIndex = 2,
-                        BackgroundTransparency = 0.22
+                        BackgroundTransparency = 0,
                     })
                     d1:AddToTheme({BackgroundColor3 = "Outline"})
-                    Instances:Create("UIGradient", {
-                        Parent = d1.Instance,
-                        Name = "\0",
-                        Rotation = 0,
-                        Transparency = NumSequence{
-                            NumSequenceKeypoint(0, 1),
-                            NumSequenceKeypoint(0.12, 0.35),
-                            NumSequenceKeypoint(0.5, 0),
-                            NumSequenceKeypoint(0.88, 0.35),
-                            NumSequenceKeypoint(1, 1),
-                        },
-                    })
                 end
 
                 DashItems["GameName"] = Instances:Create("TextLabel", {
@@ -4398,26 +4395,14 @@ local Library do
                     local d2 = Instances:Create("Frame", {
                         Parent = LeftCol.Instance,
                         Name = "\0",
-                        BackgroundColor3 = FromRGB(38, 36, 46),
+                        BackgroundColor3 = FromRGB(38, 36, 44),
                         Position = UDim2New(0, 0, 0, 197),
-                        Size = UDim2New(1, 0, 0, 2),
+                        Size = UDim2New(1, 0, 0, 1),
                         BorderSizePixel = 0,
                         ZIndex = 2,
-                        BackgroundTransparency = 0.22
+                        BackgroundTransparency = 0,
                     })
                     d2:AddToTheme({BackgroundColor3 = "Outline"})
-                    Instances:Create("UIGradient", {
-                        Parent = d2.Instance,
-                        Name = "\0",
-                        Rotation = 0,
-                        Transparency = NumSequence{
-                            NumSequenceKeypoint(0, 1),
-                            NumSequenceKeypoint(0.12, 0.35),
-                            NumSequenceKeypoint(0.5, 0),
-                            NumSequenceKeypoint(0.88, 0.35),
-                            NumSequenceKeypoint(1, 1),
-                        },
-                    })
                 end
 
                 local RightCol = Instances:Create("Frame", {
@@ -5490,6 +5475,7 @@ local Library do
                     BorderSizePixel = 0,
                     Size = UDim2New(1, 0, 0, 45),
                     ZIndex = 2,
+                    LayoutOrder = Data.LayoutOrder or Data.layoutOrder or 0,
                     AutomaticSize = Enum.AutomaticSize.Y,
                     BackgroundColor3 = FromRGB(29, 28, 32)
                 })  Items["Section"]:AddToTheme({BackgroundColor3 = "Section Background 2"})
@@ -8834,13 +8820,6 @@ local Library do
     Library.CreateSettingsPage = function(self, Window, KeybindList, Options)
         Options = Options or {}
         local pageInfo = { Name = "UI Settings", Icon = "settings" }
-        local pin = Options.PinToBottom
-        if pin == nil and Window and Window.PinToBottom ~= nil then
-            pin = Window.PinToBottom
-        end
-        if pin == true then
-            pageInfo.LayoutOrder = 999
-        end
         local Page = Window:Page(pageInfo)
 
         local UISection = Page:Section({Name = "Appearance", Icon = "palette", Side = 1}) do
@@ -8977,7 +8956,7 @@ local Library do
                 KeybindSection:Keybind({
                     Name = "Toggle UI",
                     Flag = "MenuBind",
-                    Default = Enum.KeyCode.RightShift,
+                    Default = Enum.KeyCode.RightControl,
                     Callback = function()
                         if Library.Flags.MenuKeybindEnabled == false then
                             return
@@ -8993,7 +8972,7 @@ local Library do
             end
         end
 
-        local ConfigsSection = Page:Section({Name = "Configs", Side = 2}) do
+        local ConfigsSection = Page:Section({Name = "Configs", Side = 2, LayoutOrder = 5}) do
             local ConfigName
             local ConfigSelected
 
