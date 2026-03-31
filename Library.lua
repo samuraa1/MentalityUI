@@ -2778,13 +2778,9 @@ local Library do
                     BackgroundColor3 = FromRGB(27, 25, 29)
                 })  Items["LeftTabs"]:AddToTheme({BackgroundColor3 = "Background"})
 
-                Instances:Create("UICorner", {
-                    Parent = Items["LeftTabs"].Instance,
-                    Name = "\0",
-                    CornerRadius = UDimNew(0, 14),
-                })
-
-                -- Inset scroll 1px so canvas/scrollbar does not sit on the rounded edge (reduces corner seam).
+                -- No UICorner here: MainFrame already has UICorner + ClipsDescendants, so the sidebar is clipped
+                -- to the window curve. A second UICorner on LeftTabs caused a sub-pixel seam / black speck
+                -- at the bottom-left; the parent clip keeps the same outer roundness.
 
                 Items["LeftTabsScroll"] = Instances:Create("ScrollingFrame", {
                     Parent = Items["LeftTabs"].Instance,
