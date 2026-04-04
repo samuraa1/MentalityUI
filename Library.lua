@@ -2656,7 +2656,7 @@ local Library do
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
                     Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
-                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 940, 0, 720)),
+                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 940, 0, 730)),
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
