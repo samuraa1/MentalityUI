@@ -773,7 +773,7 @@ local Library do
     do
         local FetchedIcons, IconModule = pcall(function()
             return loadstring(
-                game:HttpGet("https://raw.githubusercontent.com/deividcomsono/lucide-roblox-direct/refs/heads/main/source.lua")
+                game:HttpGet("https://raw.githubusercontent.com/samuraa1/MentalityUI/refs/heads/main/Lucide-Icons.lua")
             )()
         end)
 
