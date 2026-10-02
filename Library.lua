@@ -1368,6 +1368,7 @@ local Library do
 
         local Body = InstanceNew("Frame")
         Body.BackgroundColor3 = FromRGB(255, math.random(112, 148), math.random(18, 42))
+        Body.BackgroundTransparency = 0.4
         Body.BorderSizePixel = 0
         Body.AnchorPoint = Vector2New(0.5, 1)
         Body.Position = UDim2New(0.5, 0, 1, 0)
@@ -1381,6 +1382,7 @@ local Library do
 
         local Ridge = InstanceNew("Frame")
         Ridge.BackgroundColor3 = FromRGB(196, 78, 14)
+        Ridge.BackgroundTransparency = 0.4
         Ridge.BorderSizePixel = 0
         Ridge.AnchorPoint = Vector2New(0.5, 0.5)
         Ridge.Position = UDim2New(0.5, 0, 0.55, 0)
@@ -1394,6 +1396,7 @@ local Library do
 
         local Stem = InstanceNew("Frame")
         Stem.BackgroundColor3 = FromRGB(48, 132, 46)
+        Stem.BackgroundTransparency = 0.4
         Stem.BorderSizePixel = 0
         Stem.AnchorPoint = Vector2New(0.5, 1)
         Stem.Position = UDim2New(0.52, 0, 0.36, 0)
@@ -1488,7 +1491,7 @@ local Library do
                     Image.BorderSizePixel = 0
                     Image.Size = UDim2FromOffset(Size, Size)
                     Image.ImageColor3 = Pick.Color
-                    Image.ImageTransparency = 0.06
+                    Image.ImageTransparency = 0.42
                     Image.ZIndex = 31
                     Passive(Image)
                     Image.ScaleType = Enum.ScaleType.Fit
