@@ -206,6 +206,89 @@ local Library do
     }
 
     Library.Theme = TableClone(Themes["Preset"])
+    Library.PresetTheme = TableClone(Themes["Preset"])
+    Library._themeName = "Default"
+    Library._themeFull = false
+    Library._themeEffect = nil
+    Library._halloween = { on = false, flakes = {} }
+
+    local function AccentPalette(r, g, b, r2, g2, b2)
+        return {
+            Accent = FromRGB(r, g, b),
+            AccentGradient = FromRGB(r2, g2, b2),
+        }
+    end
+
+    Library.Palettes = {
+        Default = AccentPalette(100, 149, 255, 70, 110, 200),
+        Blue = AccentPalette(100, 149, 255, 70, 110, 200),
+        Dark = AccentPalette(130, 130, 145, 80, 80, 95),
+        Purple = AccentPalette(160, 100, 255, 120, 70, 200),
+        Cyan = AccentPalette(60, 200, 230, 40, 160, 190),
+        Green = AccentPalette(80, 200, 120, 60, 160, 90),
+        Red = AccentPalette(220, 80, 80, 180, 50, 50),
+        Orange = AccentPalette(255, 160, 50, 220, 120, 30),
+        Pink = AccentPalette(255, 100, 180, 200, 60, 140),
+        Flame = AccentPalette(255, 90, 40, 255, 200, 60),
+        Ice = AccentPalette(180, 230, 255, 100, 180, 255),
+        Gold = AccentPalette(255, 215, 100, 200, 150, 50),
+        Rose = AccentPalette(255, 120, 150, 200, 60, 120),
+        Mint = AccentPalette(100, 220, 190, 50, 160, 140),
+        Lavender = AccentPalette(190, 160, 255, 130, 100, 220),
+        Ocean = AccentPalette(40, 140, 220, 20, 80, 160),
+        Crimson = AccentPalette(190, 40, 70, 120, 16, 36),
+        Amber = AccentPalette(255, 176, 40, 210, 120, 20),
+        Lime = AccentPalette(170, 230, 60, 90, 170, 30),
+        Magenta = AccentPalette(230, 70, 180, 150, 30, 120),
+        Teal = AccentPalette(40, 190, 170, 20, 120, 110),
+        Indigo = AccentPalette(90, 90, 220, 50, 50, 150),
+        Sunset = AccentPalette(255, 110, 70, 180, 60, 140),
+        Emerald = AccentPalette(40, 190, 110, 16, 120, 70),
+        Sakura = AccentPalette(255, 160, 190, 220, 90, 140),
+        Midnight = AccentPalette(120, 140, 255, 40, 50, 90),
+        Toxic = AccentPalette(180, 255, 60, 80, 180, 20),
+        Coral = AccentPalette(255, 120, 100, 200, 70, 70),
+        Violet = AccentPalette(140, 80, 255, 80, 40, 180),
+        Arctic = AccentPalette(200, 245, 255, 80, 170, 210),
+        Cherry = AccentPalette(220, 50, 90, 140, 20, 50),
+        Neon = AccentPalette(80, 255, 200, 40, 140, 255),
+        Copper = AccentPalette(210, 130, 70, 140, 70, 30),
+        Peach = AccentPalette(255, 180, 140, 230, 120, 90),
+        Sky = AccentPalette(120, 190, 255, 60, 130, 220),
+        Wine = AccentPalette(160, 50, 80, 90, 20, 40),
+        Aqua = AccentPalette(70, 230, 220, 30, 150, 170),
+        Grape = AccentPalette(150, 80, 200, 90, 40, 140),
+        Halloween = {
+            Full = true,
+            Effect = "Halloween",
+            ["Background"] = FromRGB(22, 12, 8),
+            ["Background 2"] = FromRGB(14, 8, 5),
+            ["Text"] = FromRGB(255, 236, 220),
+            ["Outline"] = FromRGB(78, 40, 18),
+            ["Section Top"] = FromRGB(62, 30, 12),
+            ["Section Background"] = FromRGB(28, 14, 8),
+            ["Section Background 2"] = FromRGB(38, 18, 10),
+            ["Accent"] = FromRGB(255, 132, 36),
+            ["AccentGradient"] = FromRGB(186, 62, 14),
+            ["Element"] = FromRGB(46, 24, 12),
+        },
+    }
+
+    Library.ListPaletteNames = function(self)
+        local list = {}
+        for name in self.Palettes do
+            TableInsert(list, name)
+        end
+        table.sort(list)
+        for i, name in ipairs(list) do
+            if name == "Default" then
+                TableRemove(list, i)
+                TableInsert(list, 1, "Default")
+                break
+            end
+        end
+        return list
+    end
 
     -- Folders
     for Index, Value in Library.Folders do 
@@ -1044,46 +1127,145 @@ local Library do
 		return `<font color="rgb({MathFloor(Color.R * 255)}, {MathFloor(Color.G * 255)}, {MathFloor(Color.B * 255)})">{Text}</font>`
 	end
 
-    Library.GetConfig = function(self)
-        local Config = { } 
+    local function FlagIgnored(Name)
+        if type(Name) ~= "string" then
+            return true
+        end
+        if string.sub(Name, 1, 1) == "_" then
+            return true
+        end
+        return Name == "ConfigsList" or Name == "ConfigsName" or Name == "LibraryTheme"
+    end
 
-        local Success, Result = Library:SafeCall(function()
-            for Index, Value in Library.Flags do 
-                if type(Value) == "table" and Value.Key then
-                    Config[Index] = {Key = tostring(Value.Key), Mode = Value.Mode}
-                elseif type(Value) == "table" and Value.Color then
-                    Config[Index] = {Color = "#" .. Value.HexValue, Alpha = Value.Alpha}
-                else
-                    Config[Index] = Value
+    local function SanitizeFlag(Value, Depth)
+        if Depth > 8 or Value == nil then
+            return nil
+        end
+        local Kind = typeof(Value)
+        if Kind == "boolean" or Kind == "number" or Kind == "string" then
+            return Value
+        end
+        if Kind == "Color3" then
+            return { _type = "Color3", r = Value.R, g = Value.G, b = Value.B }
+        end
+        if Kind == "EnumItem" then
+            return tostring(Value)
+        end
+        if Kind ~= "table" then
+            return nil
+        end
+        if Value.Key ~= nil then
+            return {
+                Key = tostring(Value.Key),
+                Mode = Value.Mode,
+                Toggled = Value.Toggled and true or false,
+            }
+        end
+        if Value.HexValue or typeof(Value.Color) == "Color3" or type(Value.Color) == "string" then
+            local Hex = Value.HexValue
+            if typeof(Value.Color) == "Color3" then
+                Hex = Value.Color:ToHex()
+            elseif type(Value.Color) == "string" then
+                Hex = Value.Color
+            end
+            Hex = tostring(Hex or "FFFFFF"):gsub("#", "")
+            return { Color = "#" .. Hex, Alpha = tonumber(Value.Alpha) or 0 }
+        end
+        local Out = {}
+        for Key, Child in Value do
+            if type(Key) == "string" or type(Key) == "number" then
+                local Packed = SanitizeFlag(Child, Depth + 1)
+                if Packed ~= nil then
+                    Out[Key] = Packed
                 end
             end
-        end)
+        end
+        return Out
+    end
 
-        return HttpService:JSONEncode(Config)
+    Library.GetConfig = function(self)
+        local Config = {}
+
+        for Flag in self.SetFlags do
+            if FlagIgnored(Flag) then
+                continue
+            end
+            local Ok, Packed = pcall(SanitizeFlag, self.Flags[Flag], 0)
+            if Ok and Packed ~= nil then
+                Config[Flag] = Packed
+            end
+        end
+
+        local Theme = {}
+        for Key, Color in self.Theme do
+            if typeof(Color) == "Color3" then
+                Theme[Key] = "#" .. Color:ToHex()
+            end
+        end
+        Config.__theme = Theme
+        Config.__effect = self._themeEffect or ""
+        Config.__themeName = self._themeName or "Default"
+
+        local Ok, Encoded = pcall(function()
+            return HttpService:JSONEncode(Config)
+        end)
+        if not Ok or type(Encoded) ~= "string" then
+            return nil
+        end
+        return Encoded
     end
 
     Library.LoadConfig = function(self, Config)
-        local Decoded = HttpService:JSONDecode(Config)
+        local Ok, Decoded = pcall(function()
+            return HttpService:JSONDecode(Config)
+        end)
+        if not Ok or type(Decoded) ~= "table" then
+            return false, "Failed to parse config"
+        end
 
-        local Success, Result = Library:SafeCall(function()
-            for Index, Value in Decoded do 
-                local SetFunction = Library.SetFlags[Index]
-
-                if not SetFunction then
-                    continue
-                end
-
-                if type(Value) == "table" and Value.Key then 
+        for Index, Value in Decoded do
+            if FlagIgnored(Index) then
+                continue
+            end
+            local SetFunction = self.SetFlags[Index]
+            if not SetFunction then
+                continue
+            end
+            pcall(function()
+                if type(Value) == "table" and Value._type == "Color3" then
+                    SetFunction(Color3.new(Value.r or 1, Value.g or 1, Value.b or 1))
+                elseif type(Value) == "table" and Value.Key then
                     SetFunction(Value)
                 elseif type(Value) == "table" and Value.Color then
                     SetFunction(Value.Color, Value.Alpha)
                 else
                     SetFunction(Value)
                 end
-            end
-        end)
+            end)
+        end
 
-        return Success, Result
+        if type(Decoded.__theme) == "table" then
+            local Palette = {
+                Full = true,
+                Effect = Decoded.__effect ~= "" and Decoded.__effect or nil,
+            }
+            for Key, Hex in Decoded.__theme do
+                if type(Hex) == "string" then
+                    local Parsed
+                    pcall(function()
+                        Parsed = FromHex(Hex)
+                    end)
+                    if typeof(Parsed) == "Color3" then
+                        Palette[Key] = Parsed
+                    end
+                end
+            end
+            self:ApplyPalette(Palette, Decoded.__themeName)
+        elseif type(Decoded.__themeName) == "string" and self.Palettes and self.Palettes[Decoded.__themeName] then
+            self:ApplyPalette(self.Palettes[Decoded.__themeName], Decoded.__themeName)
+        end
+
+        return true
     end
 
     Library.ConfigDisplayToFile = function(self, name)
@@ -1152,6 +1334,246 @@ local Library do
                 end
             end
         end
+    end
+
+    local HalloweenIcons = {
+        { Icon = "ghost", Color = FromRGB(255, 244, 230) },
+        { Icon = "skull", Color = FromRGB(236, 236, 242) },
+        { Icon = "candy", Color = FromRGB(255, 140, 60) },
+        { Icon = "candy-cane", Color = FromRGB(255, 96, 96) },
+        { Icon = "flame", Color = FromRGB(255, 170, 50) },
+        { Icon = "moon-star", Color = FromRGB(255, 214, 130) },
+        { Icon = "bone", Color = FromRGB(235, 224, 206) },
+        { Icon = "sparkles", Color = FromRGB(255, 196, 80) },
+        { Icon = "lollipop", Color = FromRGB(255, 110, 170) },
+    }
+
+    local function Passive(Object)
+        Object.Active = false
+        pcall(function()
+            Object.Interactable = false
+        end)
+    end
+
+    local function MakePumpkin(Parent, Size, ZIndex)
+        local Root = InstanceNew("Frame")
+        Root.Name = "Pumpkin"
+        Root.BackgroundTransparency = 1
+        Root.BorderSizePixel = 0
+        Root.AnchorPoint = Vector2New(0, 0)
+        Root.Size = UDim2FromOffset(Size, Size)
+        Root.ZIndex = ZIndex
+        Passive(Root)
+        Root.Parent = Parent
+
+        local Body = InstanceNew("Frame")
+        Body.BackgroundColor3 = FromRGB(255, math.random(112, 148), math.random(18, 42))
+        Body.BorderSizePixel = 0
+        Body.AnchorPoint = Vector2New(0.5, 1)
+        Body.Position = UDim2New(0.5, 0, 1, 0)
+        Body.Size = UDim2New(0.86, 0, 0.72, 0)
+        Body.ZIndex = ZIndex
+        Passive(Body)
+        Body.Parent = Root
+        local BodyCorner = InstanceNew("UICorner")
+        BodyCorner.CornerRadius = UDimNew(1, 0)
+        BodyCorner.Parent = Body
+
+        local Ridge = InstanceNew("Frame")
+        Ridge.BackgroundColor3 = FromRGB(196, 78, 14)
+        Ridge.BorderSizePixel = 0
+        Ridge.AnchorPoint = Vector2New(0.5, 0.5)
+        Ridge.Position = UDim2New(0.5, 0, 0.55, 0)
+        Ridge.Size = UDim2New(0.14, 0, 0.8, 0)
+        Ridge.ZIndex = ZIndex + 1
+        Passive(Ridge)
+        Ridge.Parent = Body
+        local RidgeCorner = InstanceNew("UICorner")
+        RidgeCorner.CornerRadius = UDimNew(1, 0)
+        RidgeCorner.Parent = Ridge
+
+        local Stem = InstanceNew("Frame")
+        Stem.BackgroundColor3 = FromRGB(48, 132, 46)
+        Stem.BorderSizePixel = 0
+        Stem.AnchorPoint = Vector2New(0.5, 1)
+        Stem.Position = UDim2New(0.52, 0, 0.36, 0)
+        Stem.Size = UDim2New(0.16, 0, 0.3, 0)
+        Stem.Rotation = -16
+        Stem.ZIndex = ZIndex
+        Passive(Stem)
+        Stem.Parent = Root
+        local StemCorner = InstanceNew("UICorner")
+        StemCorner.CornerRadius = UDimNew(0, 3)
+        StemCorner.Parent = Stem
+
+        return Root
+    end
+
+    Library.SetHalloween = function(self, Enabled)
+        local State = self._halloween
+        Enabled = Enabled and true or false
+
+        local function Stop()
+            State.on = false
+            if State.conn then
+                State.conn:Disconnect()
+                State.conn = nil
+            end
+            if State.layer then
+                State.layer:Destroy()
+                State.layer = nil
+            end
+            State.flakes = {}
+        end
+
+        if not Enabled then
+            Stop()
+            return
+        end
+
+        local Main = self.MainFrame and self.MainFrame.Instance
+        if not Main then
+            State.on = true
+            return
+        end
+        if State.on and State.layer and State.layer.Parent == Main and State.conn then
+            return
+        end
+        Stop()
+        State.on = true
+
+        local Layer = InstanceNew("Frame")
+        Layer.Name = "HalloweenFall"
+        Layer.BackgroundTransparency = 1
+        Layer.BorderSizePixel = 0
+        Layer.Size = UDim2New(1, 0, 1, 0)
+        Layer.ZIndex = 30
+        Passive(Layer)
+        Layer.ClipsDescendants = true
+        Layer.Parent = Main
+        State.layer = Layer
+        State.flakes = {}
+
+        local SpawnWait = 0
+        State.conn = RunService.Heartbeat:Connect(function(dt)
+            if not State.on or not Layer.Parent then
+                if State.conn then
+                    State.conn:Disconnect()
+                    State.conn = nil
+                end
+                State.on = false
+                return
+            end
+            if not Layer.Parent.Visible then
+                return
+            end
+
+            local Width = Layer.AbsoluteSize.X
+            local Height = Layer.AbsoluteSize.Y
+            if Width < 8 or Height < 8 then
+                return
+            end
+
+            SpawnWait += dt
+            if SpawnWait >= 0.4 and #State.flakes < 16 then
+                SpawnWait = 0
+                local Size = math.random(14, 26)
+                local Flake
+                if math.random() < 0.62 or not self.SetIcon then
+                    Flake = MakePumpkin(Layer, Size, 31)
+                else
+                    local Pick = HalloweenIcons[math.random(1, #HalloweenIcons)]
+                    local Image = InstanceNew("ImageLabel")
+                    Image.BackgroundTransparency = 1
+                    Image.BorderSizePixel = 0
+                    Image.Size = UDim2FromOffset(Size, Size)
+                    Image.ImageColor3 = Pick.Color
+                    Image.ImageTransparency = 0.06
+                    Image.ZIndex = 31
+                    Passive(Image)
+                    Image.ScaleType = Enum.ScaleType.Fit
+                    Image.Parent = Layer
+                    self:SetIcon(Image, Pick.Icon)
+                    if Image.Image == "" then
+                        Image:Destroy()
+                        Flake = MakePumpkin(Layer, Size, 31)
+                    else
+                        Flake = Image
+                    end
+                end
+
+                TableInsert(State.flakes, {
+                    obj = Flake,
+                    x = math.random(0, math.max(0, MathFloor(Width - Size))),
+                    y = -Size - math.random(0, 36),
+                    speed = math.random(34, 76),
+                    sway = math.random(12, 28) / 10,
+                    amp = math.random(8, 22),
+                    phase = math.random() * 6.28,
+                    rot = math.random(-24, 24),
+                })
+            end
+
+            for Index = #State.flakes, 1, -1 do
+                local Flake = State.flakes[Index]
+                local Obj = Flake.obj
+                if not Obj or not Obj.Parent then
+                    TableRemove(State.flakes, Index)
+                else
+                    Flake.y += Flake.speed * dt
+                    Flake.phase += dt * Flake.sway
+                    Obj.Position = UDim2FromOffset(Flake.x + MathSin(Flake.phase) * Flake.amp, Flake.y)
+                    Obj.Rotation = Flake.rot + MathSin(Flake.phase * 0.8) * 16
+                    if Flake.y > Height + 30 then
+                        Obj:Destroy()
+                        TableRemove(State.flakes, Index)
+                    end
+                end
+            end
+        end)
+    end
+
+    Library.ApplyPalette = function(self, Palette, Name)
+        if type(Palette) ~= "table" or self._applyingPalette then
+            return
+        end
+        self._applyingPalette = true
+
+        local Full = Palette.Full and true or false
+        if Full or self._themeFull then
+            for Key, Color in self.PresetTheme do
+                if typeof(Color) == "Color3" then
+                    self:ChangeTheme(Key, Color)
+                end
+            end
+        end
+        for Key, Color in Palette do
+            if typeof(Color) == "Color3" then
+                self:ChangeTheme(Key, Color)
+            end
+        end
+
+        self._themeFull = Full
+        self._themeEffect = Palette.Effect
+        if type(Name) == "string" and Name ~= "" then
+            self._themeName = Name
+        end
+        self:SetHalloween(Palette.Effect == "Halloween")
+
+        self._suppressThemeUi = true
+        pcall(function()
+            if self.SetFlags.LibraryTheme and self._themeName then
+                self.SetFlags.LibraryTheme(self._themeName)
+            end
+            if self.SetFlags.AccentColor and self.Theme.Accent then
+                self.SetFlags.AccentColor(self.Theme.Accent)
+            end
+            if self.SetFlags.AccentGradientColor and self.Theme.AccentGradient then
+                self.SetFlags.AccentGradientColor(self.Theme.AccentGradient)
+            end
+        end)
+        self._suppressThemeUi = false
+        self._applyingPalette = false
     end
 
     Library.IsMouseOverFrame = function(self, Frame)
@@ -2656,7 +3078,7 @@ local Library do
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
                     Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
-                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 940, 0, 730)),
+                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 940, 0, 720)),
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
@@ -3022,17 +3444,7 @@ local Library do
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     BackgroundColor3 = FromRGB(255, 255, 255)
-                }) 
-
-                Instances:Create("UIGradient", {
-                    Parent = Items["Logo"].Instance,
-                    Name = "\0",
-                    Enabled = true,
-                    Rotation = -115,
-                    Color = RGBSequence{RGBSequenceKeypoint(0, FromRGB(255, 255, 255)), RGBSequenceKeypoint(1, FromRGB(143, 143, 143))}
-                }):AddToTheme({Color = function()
-                    return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
-                end})
+                })
                 
                 Items["Title"] = Instances:Create("TextLabel", {
                     Parent = Items["MainFrame"].Instance,
@@ -3273,6 +3685,9 @@ local Library do
                 end)
                 
                 Window.Items = Items
+                if Library._themeEffect == "Halloween" or (Library._halloween and Library._halloween.on) then
+                    Library:SetHalloween(true)
+                end
             end
             
             local Debounce = false
@@ -7005,6 +7420,19 @@ local Library do
                         return
                     end
  
+                    local Picked = {}
+                    for _, Value in Option do
+                        if type(Value) == "string" then
+                            Picked[Value] = true
+                        end
+                    end
+                    for Name, OptionData in Dropdown.Options do
+                        if not Picked[Name] then
+                            OptionData.Selected = false
+                            OptionData:Toggle("Inactive")
+                        end
+                    end
+
                     Dropdown.Value = Option
                     Library.Flags[Dropdown.Flag] = Option
 
@@ -7019,7 +7447,13 @@ local Library do
                         OptionData:Toggle("Active")
                     end
 
-                    Items["Value"].Instance.Text = TableConcat(Option, ", ")
+                    local Labels = {}
+                    for _, Value in Option do
+                        if type(Value) == "string" then
+                            TableInsert(Labels, Value)
+                        end
+                    end
+                    Items["Value"].Instance.Text = TableConcat(Labels, ", ")
                 else
                     if not Dropdown.Options[Option] then
                         return
@@ -7812,6 +8246,37 @@ local Library do
                     Update()
                 elseif type(Key) == "table" then
                     local rk = Key.Key
+                    if typeof(rk) ~= "EnumItem" and type(rk) == "string" and rk ~= "" and rk ~= "None" then
+                        local Resolved
+                        local EnumType, EnumName = string.match(rk, "^Enum%.(%w+)%.(.+)$")
+                        if EnumType and Enum[EnumType] then
+                            local OkItem, Item = pcall(function()
+                                return Enum[EnumType][EnumName]
+                            end)
+                            if OkItem and typeof(Item) == "EnumItem" then
+                                Resolved = Item
+                            end
+                        end
+                        if not Resolved then
+                            local OkItem, Item = pcall(function()
+                                return Enum.KeyCode[rk]
+                            end)
+                            if OkItem and typeof(Item) == "EnumItem" then
+                                Resolved = Item
+                            end
+                        end
+                        if not Resolved then
+                            local OkItem, Item = pcall(function()
+                                return Enum.UserInputType[rk]
+                            end)
+                            if OkItem and typeof(Item) == "EnumItem" then
+                                Resolved = Item
+                            end
+                        end
+                        if Resolved then
+                            rk = Resolved
+                        end
+                    end
                     if typeof(rk) == "EnumItem" then
                         Keybind.Key = tostring(rk)
                         if rk.EnumType == Enum.KeyCode then
@@ -7833,9 +8298,18 @@ local Library do
                     end
 
                     if Key.Mode then
-                        Keybind:SetMode(Key.Mode, SkipCallback)
+                        Keybind:SetMode(Key.Mode, true)
                     else
-                        Keybind:SetMode("Toggle", SkipCallback)
+                        Keybind:SetMode("Toggle", true)
+                    end
+
+                    if Key.Toggled ~= nil then
+                        Keybind.Toggled = Key.Toggled and true or false
+                        Library.Flags[Keybind.Flag] = {
+                            Mode = Keybind.ModeSelected,
+                            Key = Keybind.Key,
+                            Toggled = Keybind.Toggled,
+                        }
                     end
 
                     if Data.Callback and not SkipCallback then
@@ -7979,6 +8453,9 @@ local Library do
 
             Library.SetFlags[Keybind.Flag] = function(Value)
                 Keybind:Set(Value, true)
+                if type(Value) == "table" and Value.Toggled and Data.Callback then
+                    Library:SafeCall(Data.Callback, Keybind.Toggled)
+                end
             end
 
             if Keybind.syncFlag then
@@ -8301,6 +8778,19 @@ local Library do
                 if Dropdown.Multi then 
                     if type(Option) ~= "table" then 
                         return
+                    end
+
+                    local Picked = {}
+                    for _, Value in Option do
+                        if type(Value) == "string" then
+                            Picked[Value] = true
+                        end
+                    end
+                    for Name, OptionData in Dropdown.Options do
+                        if not Picked[Name] then
+                            OptionData.Selected = false
+                            OptionData:Toggle("Inactive")
+                        end
                     end
 
                     Dropdown.Value = Option
@@ -8649,6 +9139,9 @@ local Library do
                 Flag = "AccentColor",
                 Default = Library.Theme.Accent,
                 Callback = function(Color)
+                    if Library._suppressThemeUi or Library._applyingPalette then
+                        return
+                    end
                     Library.Theme.Accent = Color
                     Library:ChangeTheme("Accent", Color)
                 end
@@ -8658,8 +9151,30 @@ local Library do
                 Flag = "AccentGradientColor",
                 Default = Library.Theme.AccentGradient,
                 Callback = function(Color)
+                    if Library._suppressThemeUi or Library._applyingPalette then
+                        return
+                    end
                     Library.Theme.AccentGradient = Color
                     Library:ChangeTheme("AccentGradient", Color)
+                end
+            })
+
+            UISection:Dropdown({
+                Name = "Theme",
+                Flag = "LibraryTheme",
+                Items = Library:ListPaletteNames(),
+                Default = Library._themeName or "Default",
+                Search = true,
+                Size = 180,
+                OptionHolderSize = 200,
+                Callback = function(Value)
+                    if Library._suppressThemeUi or Library._applyingPalette then
+                        return
+                    end
+                    local Palette = Library.Palettes[Value]
+                    if Palette then
+                        Library:ApplyPalette(Palette, Value)
+                    end
                 end
             })
 
@@ -8798,6 +9313,63 @@ local Library do
             local ConfigName
             local ConfigSelected
 
+            local function Notify(Title, Description)
+                Library:Notification({
+                    Title = Title,
+                    Description = Description,
+                    Duration = 2.5,
+                    Icon = "97594400820219",
+                })
+            end
+
+            local function CleanName(Value)
+                Value = tostring(Value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+                if Value == "" or Value:find("[/\\]") or Value:find("%.%.") then
+                    return nil
+                end
+                return Value
+            end
+
+            local function SelectedName()
+                local Pick = ConfigSelected
+                if (not Pick or Pick == "") and Library.Flags then
+                    Pick = Library.Flags.ConfigsList
+                end
+                if type(Pick) == "table" then
+                    Pick = Pick[1]
+                end
+                return CleanName(Pick)
+            end
+
+            local function TypedName()
+                local Raw = Library.Flags and Library.Flags.ConfigsName
+                if not Raw or Raw == "" then
+                    Raw = ConfigName
+                end
+                return CleanName(Raw)
+            end
+
+            local function WriteConfig(Name)
+                local FileName = Library:ConfigDisplayToFile(Name)
+                if not FileName then
+                    return false, "Type a config name first"
+                end
+                local Payload = Library:GetConfig()
+                if type(Payload) ~= "string" then
+                    return false, "Could not encode config"
+                end
+                local Ok, Err = pcall(function()
+                    if not isfolder(Library.Folders.Configs) then
+                        makefolder(Library.Folders.Configs)
+                    end
+                    writefile(Library.Folders.Configs .. "/" .. FileName, Payload)
+                end)
+                if not Ok then
+                    return false, tostring(Err)
+                end
+                return true
+            end
+
             local ConfigsDropdown = ConfigsSection:Listbox({
                 Flag = "ConfigsList",
                 Items = {},
@@ -8811,7 +9383,7 @@ local Library do
                 Flag = "ConfigsName",
                 Placeholder = "Config name...",
                 Numeric = false,
-                Finished = true,
+                Finished = false,
                 Callback = function(Value)
                     ConfigName = Value
                 end
@@ -8820,11 +9392,17 @@ local Library do
             ConfigsSection:Button({
                 Name = "Create",
                 Callback = function()
-                    local raw = ConfigName or (Library.Flags and Library.Flags.ConfigsName)
-                    local fn = Library:ConfigDisplayToFile(raw)
-                    if fn and not isfile(Library.Folders.Configs .. "/" .. fn) then
-                        writefile(Library.Folders.Configs .. "/" .. fn, Library:GetConfig())
+                    local Name = TypedName()
+                    if not Name then
+                        Notify("Configs", "Type a config name first")
+                        return
+                    end
+                    local Ok, Err = WriteConfig(Name)
+                    if Ok then
                         Library:RefreshConfigsList(ConfigsDropdown)
+                        Notify("Configs", "Saved \"" .. Name .. "\"")
+                    else
+                        Notify("Configs", tostring(Err))
                     end
                 end
             })
@@ -8832,20 +9410,45 @@ local Library do
             ConfigsSection:Button({
                 Name = "Delete",
                 Callback = function()
-                    if ConfigSelected then
-                        Library:DeleteConfig(ConfigSelected)
-                        Library:RefreshConfigsList(ConfigsDropdown)
+                    local Name = SelectedName()
+                    if not Name then
+                        Notify("Configs", "Select a config first")
+                        return
                     end
+                    pcall(function()
+                        Library:DeleteConfig(Name)
+                    end)
+                    ConfigSelected = nil
+                    Library:RefreshConfigsList(ConfigsDropdown)
+                    Notify("Configs", "Deleted \"" .. Name .. "\"")
                 end
             })
 
             ConfigsSection:Button({
                 Name = "Load",
                 Callback = function()
-                    if not ConfigSelected then return end
-                    local fn = Library:ConfigDisplayToFile(ConfigSelected)
-                    if fn and isfile(Library.Folders.Configs .. "/" .. fn) then
-                        Library:LoadConfig(readfile(Library.Folders.Configs .. "/" .. fn))
+                    local Name = SelectedName()
+                    if not Name then
+                        Notify("Configs", "Select a config first")
+                        return
+                    end
+                    local FileName = Library:ConfigDisplayToFile(Name)
+                    local Path = Library.Folders.Configs .. "/" .. FileName
+                    local OkRead, Raw = pcall(function()
+                        if not isfile(Path) then
+                            return nil
+                        end
+                        return readfile(Path)
+                    end)
+                    if not OkRead or type(Raw) ~= "string" then
+                        Notify("Configs", "Config not found")
+                        return
+                    end
+                    local Ok, Err = Library:LoadConfig(Raw)
+                    if Ok then
+                        Notify("Configs", "Loaded \"" .. Name .. "\"")
+                    else
+                        Notify("Configs", tostring(Err))
                     end
                 end
             })
@@ -8853,11 +9456,17 @@ local Library do
             ConfigsSection:Button({
                 Name = "Save",
                 Callback = function()
-                    if not ConfigSelected then return end
-                    local fn = Library:ConfigDisplayToFile(ConfigSelected)
-                    if fn then
-                        writefile(Library.Folders.Configs .. "/" .. fn, Library:GetConfig())
+                    local Name = SelectedName() or TypedName()
+                    if not Name then
+                        Notify("Configs", "Select a config or type a name")
+                        return
+                    end
+                    local Ok, Err = WriteConfig(Name)
+                    if Ok then
                         Library:RefreshConfigsList(ConfigsDropdown)
+                        Notify("Configs", "Saved \"" .. Name .. "\"")
+                    else
+                        Notify("Configs", tostring(Err))
                     end
                 end
             })
