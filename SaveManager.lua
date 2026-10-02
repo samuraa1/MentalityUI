@@ -1,191 +1,355 @@
 local SaveManager = {}
 SaveManager.__index = SaveManager
 
-local HttpService = game:GetService("HttpService")
-
 local Library
-local Options
+
+local NOTIF_ICON = "97594400820219"
+
+local function CleanName(Name)
+    Name = tostring(Name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if Name == "" or Name:find("[/\\]") or Name:find("%.%.") then
+        return nil
+    end
+    return Name
+end
+
+local function Notify(Title, Description)
+    if Library and Library.Notification then
+        Library:Notification({
+            Title = Title,
+            Description = Description,
+            Duration = 2.5,
+            Icon = NOTIF_ICON,
+        })
+    end
+end
 
 function SaveManager:SetLibrary(Lib)
     Library = Lib
-    Options = Lib.Flags or {}
+end
+
+function SaveManager:FolderName()
+    return self.Folder or "SaveManager"
+end
+
+function SaveManager:EnsureFolder()
+    local Folder = self:FolderName()
+    if type(isfolder) ~= "function" or type(makefolder) ~= "function" then
+        return false, "Filesystem is not available"
+    end
+    local Ok, Err = pcall(function()
+        if not isfolder(Folder) then
+            makefolder(Folder)
+        end
+    end)
+    if not Ok then
+        return false, tostring(Err)
+    end
+    return true
 end
 
 function SaveManager:SetFolder(FolderName)
     self.Folder = FolderName
-    if not isfolder(FolderName) then
-        makefolder(FolderName)
-    end
+    self:EnsureFolder()
 end
 
 function SaveManager:GetConfigPath(Name)
-    return (self.Folder or "SaveManager") .. "/" .. Name .. ".json"
+    return self:FolderName() .. "/" .. Name .. ".json"
+end
+
+function SaveManager:GetAutoloadPath()
+    return self:FolderName() .. "/autoload.txt"
 end
 
 function SaveManager:ListConfigs()
-    local folder = self.Folder or "SaveManager"
-    if not isfolder(folder) then return {} end
-    local list = {}
-    for _, f in ipairs(listfiles(folder)) do
-        local name = f:match("([^/\\]+)%.json$")
-        if name then
-            table.insert(list, name)
+    local Ready = self:EnsureFolder()
+    if not Ready then
+        return {}
+    end
+    local Ok, Files = pcall(listfiles, self:FolderName())
+    if not Ok or type(Files) ~= "table" then
+        return {}
+    end
+    local List = {}
+    for _, File in ipairs(Files) do
+        local Name = File:match("([^/\\]+)%.json$")
+        if Name and Name ~= "" then
+            table.insert(List, Name)
         end
     end
-    table.sort(list)
-    return list
+    table.sort(List)
+    return List
 end
 
 function SaveManager:Save(Name)
-    if not Library then return false, "Library not set" end
-    local folder = self.Folder or "SaveManager"
-    if not isfolder(folder) then makefolder(folder) end
-
-    local data = {}
-    local flags = Library.Flags
-    for flag, value in next, flags do
-        if type(value) == "boolean" or type(value) == "number" or type(value) == "string" then
-            data[flag] = value
-        elseif typeof(value) == "Color3" then
-            data[flag] = {r = value.R, g = value.G, b = value.B, _type = "Color3"}
-        elseif typeof(value) == "EnumItem" then
-            data[flag] = {enum = tostring(value), _type = "EnumItem"}
-        elseif type(value) == "table" then
-            data[flag] = value
-        end
+    if not Library or not Library.GetConfig then
+        return false, "Library not set"
     end
-
-    local ok, err = pcall(function()
-        writefile(self:GetConfigPath(Name), HttpService:JSONEncode(data))
-    end)
-    return ok, err
-end
-
-function SaveManager:Load(Name)
-    if not Library then return false, "Library not set" end
-    local path = self:GetConfigPath(Name)
-    if not isfile(path) then return false, "Config not found: " .. Name end
-
-    local ok, data = pcall(function()
-        return HttpService:JSONDecode(readfile(path))
-    end)
-    if not ok then return false, "Failed to parse config" end
-
-    local setFlags = Library.SetFlags
-    local libFlags = Library.Flags
-    for flag, value in next, data do
-        if type(value) == "table" and value._type == "Color3" then
-            value = Color3.new(value.r, value.g, value.b)
-        elseif type(value) == "table" and value._type == "EnumItem" then
-            local ok2, ev = pcall(function()
-                local parts = value.enum:split(".")
-                return Enum[parts[2]][parts[3]]
-            end)
-            if ok2 then value = ev else continue end
-        end
-        if setFlags and setFlags[flag] then
-            setFlags[flag](value)
-        else
-            libFlags[flag] = value
-        end
+    Name = CleanName(Name)
+    if not Name then
+        return false, "Invalid config name"
     end
-
+    local Ready, FolderErr = self:EnsureFolder()
+    if not Ready then
+        return false, FolderErr
+    end
+    local Payload = Library:GetConfig()
+    if type(Payload) ~= "string" then
+        return false, "Could not encode config"
+    end
+    local Ok, Err = pcall(writefile, self:GetConfigPath(Name), Payload)
+    if not Ok then
+        return false, tostring(Err)
+    end
     return true
 end
 
-function SaveManager:Delete(Name)
-    local path = self:GetConfigPath(Name)
-    if isfile(path) then
-        pcall(delfile, path)
+function SaveManager:Load(Name)
+    if not Library or not Library.LoadConfig then
+        return false, "Library not set"
     end
+    Name = CleanName(Name)
+    if not Name then
+        return false, "Invalid config name"
+    end
+    local Path = self:GetConfigPath(Name)
+    local Ok, Raw = pcall(function()
+        if not isfile(Path) then
+            return nil
+        end
+        return readfile(Path)
+    end)
+    if not Ok then
+        return false, tostring(Raw)
+    end
+    if type(Raw) ~= "string" then
+        return false, "Config not found: " .. Name
+    end
+    return Library:LoadConfig(Raw)
+end
+
+function SaveManager:Delete(Name)
+    Name = CleanName(Name)
+    if not Name then
+        return false
+    end
+    local Ok, Err = pcall(function()
+        local Path = self:GetConfigPath(Name)
+        if isfile(Path) then
+            delfile(Path)
+        end
+    end)
+    if not Ok then
+        return false, tostring(Err)
+    end
+    if self:GetAutoloadName() == Name then
+        pcall(function()
+            local AutoPath = self:GetAutoloadPath()
+            if isfile(AutoPath) then
+                delfile(AutoPath)
+            end
+        end)
+    end
+    return true
+end
+
+function SaveManager:GetAutoloadName()
+    local Ok, Raw = pcall(function()
+        local Path = self:GetAutoloadPath()
+        if not isfile(Path) then
+            return nil
+        end
+        return readfile(Path)
+    end)
+    if not Ok then
+        return nil
+    end
+    return CleanName(Raw)
+end
+
+function SaveManager:SetAutoload(Name)
+    Name = CleanName(Name)
+    if not Name then
+        return false, "Invalid config name"
+    end
+    local Ready, FolderErr = self:EnsureFolder()
+    if not Ready then
+        return false, FolderErr
+    end
+    local Ok, Err = pcall(writefile, self:GetAutoloadPath(), Name)
+    if not Ok then
+        return false, tostring(Err)
+    end
+    return true
+end
+
+function SaveManager:LoadAutoload()
+    local Name = self:GetAutoloadName()
+    if not Name then
+        return false
+    end
+    return self:Load(Name)
 end
 
 function SaveManager:BuildConfigSection(Tab)
-    if not Tab then return end
+    if not Tab then
+        return
+    end
 
-    local ConfigSection = Tab:Section({Name = "Configs", Side = 2})
-
-    local configName = ""
-    local configSelected = nil
+    local ConfigSection = Tab:Section({ Name = "Configs", Side = 2 })
+    local ConfigName = ""
+    local ConfigSelected = nil
 
     local ConfigList = ConfigSection:Listbox({
         Flag = "_SaveManagerList",
         Items = self:ListConfigs(),
-        Callback = function(v)
-            configSelected = v
-        end
+        Callback = function(Value)
+            ConfigSelected = Value
+        end,
     })
 
     ConfigSection:Textbox({
         Flag = "_SaveManagerName",
         Placeholder = "Config name...",
-        Finished = true,
-        Callback = function(v)
-            configName = v
-        end
+        Finished = false,
+        Callback = function(Value)
+            ConfigName = Value
+        end,
     })
+
+    local function CurrentName()
+        local Raw = Library and Library.Flags and Library.Flags._SaveManagerName
+        if not Raw or Raw == "" then
+            Raw = ConfigName
+        end
+        return CleanName(Raw)
+    end
+
+    local function CurrentPick()
+        local Pick = ConfigSelected
+        if (not Pick or Pick == "") and Library and Library.Flags then
+            Pick = Library.Flags._SaveManagerList
+        end
+        if type(Pick) == "table" then
+            Pick = Pick[1]
+        end
+        return CleanName(Pick)
+    end
+
+    local function Refresh()
+        if ConfigList and ConfigList.Refresh then
+            ConfigList:Refresh(self:ListConfigs())
+        end
+    end
 
     ConfigSection:Button({
         Name = "Create Config",
         Callback = function()
-            if configName and configName ~= "" then
-                local ok, err = self:Save(configName)
-                if ok then
-                    Library:Notification({Title = "SaveManager", Description = "Config '" .. configName .. "' created.", Duration = 3})
-                    ConfigList:Refresh(self:ListConfigs())
-                else
-                    Library:Notification({Title = "Error", Description = tostring(err), Duration = 3})
-                end
+            local Name = CurrentName()
+            if not Name then
+                Notify("SaveManager", "Type a config name first")
+                return
             end
-        end
+            local Ok, Err = self:Save(Name)
+            if Ok then
+                Refresh()
+                Notify("SaveManager", "Saved \"" .. Name .. "\"")
+            else
+                Notify("SaveManager", tostring(Err))
+            end
+        end,
     })
 
     ConfigSection:Button({
         Name = "Load Config",
         Callback = function()
-            if configSelected then
-                local ok, err = self:Load(configSelected)
-                if ok then
-                    Library:Notification({Title = "SaveManager", Description = "Loaded '" .. configSelected .. "'.", Duration = 3})
-                else
-                    Library:Notification({Title = "Error", Description = tostring(err), Duration = 3})
-                end
+            local Name = CurrentPick()
+            if not Name then
+                Notify("SaveManager", "Select a config first")
+                return
             end
-        end
+            local Ok, Err = self:Load(Name)
+            if Ok then
+                Notify("SaveManager", "Loaded \"" .. Name .. "\"")
+            else
+                Notify("SaveManager", tostring(Err))
+            end
+        end,
     })
 
     ConfigSection:Button({
         Name = "Save Config",
         Callback = function()
-            if configSelected then
-                local ok, err = self:Save(configSelected)
-                if ok then
-                    Library:Notification({Title = "SaveManager", Description = "Saved '" .. configSelected .. "'.", Duration = 3})
-                else
-                    Library:Notification({Title = "Error", Description = tostring(err), Duration = 3})
-                end
+            local Name = CurrentPick() or CurrentName()
+            if not Name then
+                Notify("SaveManager", "Select a config or type a name")
+                return
             end
-        end
+            local Ok, Err = self:Save(Name)
+            if Ok then
+                Refresh()
+                Notify("SaveManager", "Saved \"" .. Name .. "\"")
+            else
+                Notify("SaveManager", tostring(Err))
+            end
+        end,
     })
 
     ConfigSection:Button({
         Name = "Delete Config",
         Callback = function()
-            if configSelected then
-                self:Delete(configSelected)
-                configSelected = nil
-                ConfigList:Refresh(self:ListConfigs())
-                Library:Notification({Title = "SaveManager", Description = "Config deleted.", Duration = 2})
+            local Name = CurrentPick()
+            if not Name then
+                Notify("SaveManager", "Select a config first")
+                return
             end
-        end
+            local Ok, Err = self:Delete(Name)
+            ConfigSelected = nil
+            Refresh()
+            if Ok then
+                Notify("SaveManager", "Deleted \"" .. Name .. "\"")
+            else
+                Notify("SaveManager", tostring(Err))
+            end
+        end,
+    })
+
+    ConfigSection:Button({
+        Name = "Set selected as autoload",
+        Callback = function()
+            local Name = CurrentPick()
+            if not Name then
+                Notify("SaveManager", "Select a config first")
+                return
+            end
+            local Ok, Err = self:SetAutoload(Name)
+            if Ok then
+                Notify("SaveManager", "Autoload: \"" .. Name .. "\"")
+            else
+                Notify("SaveManager", tostring(Err))
+            end
+        end,
     })
 
     ConfigSection:Button({
         Name = "Refresh List",
         Callback = function()
-            ConfigList:Refresh(self:ListConfigs())
-        end
+            Refresh()
+        end,
     })
+
+    task.defer(function()
+        local Name = self:GetAutoloadName()
+        if not Name then
+            return
+        end
+        local Ok, Err = self:Load(Name)
+        if Ok then
+            Notify("SaveManager", "Autoloaded \"" .. Name .. "\"")
+        else
+            Notify("SaveManager", tostring(Err))
+        end
+    end)
 end
 
 return SaveManager
