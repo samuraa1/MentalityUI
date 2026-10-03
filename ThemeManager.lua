@@ -157,8 +157,27 @@ function ThemeManager:GetDefaultThemeName()
     return CleanName(Raw)
 end
 
+local function SeasonalDefaultName()
+    local Now = os.date("*t")
+    if type(Now) ~= "table" then
+        return nil
+    end
+    local Year, Month, Day = tonumber(Now.year), tonumber(Now.month), tonumber(Now.day)
+    if not Year or not Month or not Day then
+        return nil
+    end
+    if Year < 2026 or (Year == 2026 and (Month < 11 or (Month == 11 and Day <= 15))) then
+        return "Halloween"
+    end
+    return nil
+end
+
+function ThemeManager:GetStartupThemeName()
+    return self:GetDefaultThemeName() or SeasonalDefaultName()
+end
+
 function ThemeManager:ApplySavedDefault()
-    local Name = self:GetDefaultThemeName()
+    local Name = self:GetStartupThemeName()
     if not Name then
         return false
     end
@@ -307,15 +326,16 @@ function ThemeManager:BuildThemeSection(Tab)
     end
 
     local ThemeSection = Tab:Section({ Name = "Themes", Side = 2, LayoutOrder = -300, Icon = "palette" })
-    ThemeSection:Label("Presets and saved themes. Halloween recolors the whole window.")
+    ThemeSection:Label("Presets and saved themes. Halloween recolors the whole window")
 
     local SelectedTheme = nil
     local Themes = self:ListThemes()
+    local Startup = self:GetStartupThemeName()
     local ThemeList = ThemeSection:Dropdown({
         Name = "Library theme",
         Flag = "_ThemeManagerList",
         Items = Themes,
-        Default = Themes[1],
+        Default = Startup or Themes[1],
         Search = true,
         Size = 200,
         OptionHolderSize = 220,
@@ -395,7 +415,7 @@ function ThemeManager:BuildThemeSection(Tab)
         end,
     })
 
-    local Saved = self:GetDefaultThemeName()
+    local Saved = self:GetStartupThemeName()
     if Saved then
         self:LoadTheme(Saved)
         if ThemeList and ThemeList.Set then
