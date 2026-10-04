@@ -9132,6 +9132,140 @@ local Library do
             return Divider
         end
 
+Library.Sections.StatCard = function(self, Data)
+            Data = Data or {}
+            local Accent = Data.Accent or FromRGB(126, 196, 184)
+            local Items = {}
+
+            Items["Card"] = Instances:Create("Frame", {
+                Parent = self.Items["Content"].Instance,
+                Name = "\0",
+                BackgroundColor3 = FromRGB(16, 18, 24),
+                BorderSizePixel = 0,
+                Size = UDim2New(1, 0, 0, 108),
+                ClipsDescendants = true,
+                ZIndex = 2,
+            })
+
+            Instances:Create("UICorner", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                CornerRadius = UDimNew(0, 14),
+            })
+
+            Instances:Create("UIGradient", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                Rotation = 118,
+                Color = RGBSequence{
+                    RGBSequenceKeypoint(0, FromRGB(24, 28, 36)),
+                    RGBSequenceKeypoint(0.55, FromRGB(16, 18, 24)),
+                    RGBSequenceKeypoint(1, Accent),
+                },
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.08),
+                    NumberSequenceKeypoint.new(0.72, 0.2),
+                    NumberSequenceKeypoint.new(1, 0.72),
+                }),
+            })
+
+            Instances:Create("UIStroke", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                Color = Accent,
+                Thickness = 1,
+                Transparency = 0.55,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            })
+
+            local watermark = Instances:Create("ImageLabel", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                AnchorPoint = Vector2New(1, 0.5),
+                BackgroundTransparency = 1,
+                Position = UDim2New(1, -8, 0.5, 0),
+                Size = UDim2New(0, 72, 0, 72),
+                ImageTransparency = 0.78,
+                ImageColor3 = Accent,
+                ZIndex = 2,
+            })
+            Library:SetIcon(watermark.Instance, Data.Icon or "circle")
+
+            Instances:Create("TextLabel", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                FontFace = Library.Font,
+                Text = string.upper(tostring(Data.Name or "Stat")),
+                TextSize = 11,
+                TextColor3 = Accent,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Position = UDim2New(0, 16, 0, 14),
+                Size = UDim2New(1, -96, 0, 16),
+                ZIndex = 3,
+            })
+
+            Items["Value"] = Instances:Create("TextLabel", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                FontFace = Library.Font,
+                Text = tostring(Data.Value or "0"),
+                TextSize = 28,
+                TextColor3 = FromRGB(248, 248, 252),
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Position = UDim2New(0, 16, 0, 32),
+                Size = UDim2New(1, -96, 0, 34),
+                ZIndex = 3,
+            })
+
+            Instances:Create("TextLabel", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                FontFace = Library.Fonts.Light or Library.Font,
+                Text = tostring(Data.Hint or ""),
+                TextSize = 12,
+                TextColor3 = FromRGB(168, 170, 184),
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Position = UDim2New(0, 16, 0, 70),
+                Size = UDim2New(1, -96, 0, 18),
+                ZIndex = 3,
+            })
+
+            local meter = Instances:Create("Frame", {
+                Parent = Items["Card"].Instance,
+                Name = "\0",
+                AnchorPoint = Vector2New(0, 1),
+                BackgroundColor3 = Accent,
+                BorderSizePixel = 0,
+                Position = UDim2New(0, 16, 1, -8),
+                Size = UDim2New(0.42, 0, 0, 2),
+                ZIndex = 3,
+            })
+            Instances:Create("UICorner", {
+                Parent = meter.Instance,
+                Name = "\0",
+                CornerRadius = UDimNew(1, 0),
+            })
+
+            local Card = {
+                Section = self,
+                Items = Items,
+            }
+
+            function Card:Set(Value)
+                Items["Value"].Instance.Text = tostring(Value)
+            end
+
+            function Card:SetVisibility(Bool)
+                Items["Card"].Instance.Visible = Bool and true or false
+            end
+
+            self.Elements[#self.Elements + 1] = Card
+            return Card
+        end
+
     Library.CreateSettingsPage = function(self, Window, KeybindList, Options)
         Options = Options or {}
         local pageInfo = { Name = "UI Settings", Icon = "settings" }
