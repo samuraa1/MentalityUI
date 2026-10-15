@@ -3054,6 +3054,1592 @@ local Library do
             end)
         end
 
+        -- In-UI changelog sheet. Replaces standalone changelog windows.
+        -- Library:Changelog({ Title = "...", Text = "...", Buttons = { { Name = "Discord", Clipboard = "https://discord.gg/..." } } })
+        Library.Changelog = function(self, Data)
+            if self ~= Library then
+                Data = self
+            end
+            if type(Data) == "string" then
+                Data = { Text = Data }
+            end
+            Data = Data or {}
+
+            local previous = Library._changelog
+            if previous and type(previous.Destroy) == "function" then
+                previous._silent = true
+                Library._changelog = nil
+                pcall(previous.Destroy)
+            end
+
+            if not Library.Holder or not Library.Holder.Instance then
+                return nil
+            end
+
+            local api = {}
+            local cleaned = false
+            local closing = false
+            local conns = {}
+            local shellThemed = {}
+            local rowThemed = {}
+            local rowRefs = {}
+            local dragWatch = nil
+            local userMoved = false
+
+            local Z_BACK = 100300
+            local Z_SHADOW = 100305
+            local Z_MODAL = 100310
+            local Z_UI = 100330
+            local Z_BTN = 100360
+
+            local touchUi = IsMobile == true
+            local showSearch = Data.Search ~= false
+            local PAD = 16
+            local closeSize = touchUi and 42 or 36
+            local headerH = touchUi and 68 or 62
+            local searchH = showSearch and (touchUi and 46 or 40) or 0
+            local footerH = touchUi and 48 or 42
+            local gapAfterHeader = 10
+            local gapAfterSearch = showSearch and 10 or 0
+            local gapAboveFooter = 14
+            local bottomPad = PAD + (touchUi and 6 or 0)
+
+            local function trim(value)
+                return (tostring(value or ""):match("^%s*(.-)%s*$")) or ""
+            end
+
+            local function listen(signal, fn)
+                if not signal or type(fn) ~= "function" then
+                    return nil
+                end
+                local ok, conn = pcall(function()
+                    return signal:Connect(fn)
+                end)
+                if ok and conn then
+                    TableInsert(conns, conn)
+                    return conn
+                end
+                return nil
+            end
+
+            local function detachList(list)
+                if not list or not Library then
+                    return
+                end
+                local drop = {}
+                for _, inst in list do
+                    drop[inst] = true
+                    if Library.ThemeMap then
+                        Library.ThemeMap[inst] = nil
+                    end
+                end
+                if Library.ThemeItems then
+                    local kept = {}
+                    for _, item in Library.ThemeItems do
+                        if not drop[item.Item] then
+                            TableInsert(kept, item)
+                        end
+                    end
+                    Library.ThemeItems = kept
+                end
+                table.clear(list)
+            end
+
+            local function bindTheme(wrapper, props, bucket)
+                wrapper:AddToTheme(props)
+                TableInsert(bucket, wrapper.Instance)
+                return wrapper
+            end
+
+            local function accentFill(parent, bucket, rotation)
+                local grad = Instances:Create("UIGradient", {
+                    Parent = parent,
+                    Rotation = rotation or -115,
+                })
+                return bindTheme(grad, { Color = function()
+                    return RGBSequence{
+                        RGBSequenceKeypoint(0, Library.Theme.Accent),
+                        RGBSequenceKeypoint(1, Library.Theme.AccentGradient),
+                    }
+                end }, bucket)
+            end
+
+            local function lift(inst, minZ)
+                if not inst then
+                    return
+                end
+                if inst:IsA("GuiObject") and inst.ZIndex < minZ then
+                    inst.ZIndex = minZ
+                end
+                for _, desc in inst:GetDescendants() do
+                    if desc:IsA("GuiObject") and desc.ZIndex < minZ then
+                        desc.ZIndex = minZ
+                    end
+                end
+            end
+
+            local function bindPress(button, fn)
+                local last = 0
+                local function fire()
+                    local now = os.clock()
+                    if now - last < 0.22 then
+                        return
+                    end
+                    last = now
+                    fn()
+                end
+                button:Connect("Activated", fire)
+                button:Connect("MouseButton1Down", fire)
+                button:Connect("MouseButton1Click", fire)
+            end
+
+            local function tactile(button)
+                local sc = Instance.new("UIScale")
+                sc.Name = "\0"
+                sc.Parent = button.Instance
+                local function down(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        TweenService:Create(sc, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.96 }):Play()
+                    end
+                end
+                local function up(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        TweenService:Create(sc, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+                    end
+                end
+                button:Connect("InputBegan", down)
+                button:Connect("InputEnded", up)
+            end
+
+            local function readableOnAccent()
+                local color = Library.Theme.Accent
+                local luminance = (color.R * 0.2126) + (color.G * 0.7152) + (color.B * 0.0722)
+                if luminance > 0.64 then
+                    return FromRGB(18, 18, 22)
+                end
+                return FromRGB(255, 255, 255)
+            end
+
+            local function pushNotice(title, body, duration)
+                if Data.Notifications == false or not Library or not Library.Notification then
+                    return
+                end
+                Library:Notification({
+                    Title = title or "Changelog",
+                    Description = body or "",
+                    Duration = duration or 3,
+                })
+                pcall(function()
+                    local holder = Library.NotifHolder and Library.NotifHolder.Instance
+                    if not holder then
+                        return
+                    end
+                    local kids = holder:GetChildren()
+                    for index = #kids, 1, -1 do
+                        local child = kids[index]
+                        if child:IsA("Frame") then
+                            child.ZIndex = 100520
+                            for _, desc in child:GetDescendants() do
+                                if desc:IsA("GuiObject") then
+                                    desc.ZIndex = 100521
+                                end
+                            end
+                            break
+                        end
+                    end
+                end)
+            end
+
+            local TAG_KIND = {
+                ["+"] = "add",
+                ["-"] = "remove",
+                ["*"] = "update",
+                ["!"] = "fix",
+                ["?"] = "note",
+            }
+            local KIND_ALIAS = {
+                ["+"] = "add", add = "add", added = "add",
+                ["-"] = "remove", remove = "remove", del = "remove", removed = "remove", delete = "remove",
+                ["*"] = "update", update = "update", change = "update", changed = "update",
+                ["!"] = "fix", fix = "fix", fixed = "fix",
+                ["?"] = "note", note = "note",
+                version = "version", section = "section", header = "section",
+                bullet = "bullet", text = "text",
+            }
+            local SEARCH_HINT = {
+                add = "add added",
+                remove = "remove removed delete",
+                update = "update changed",
+                fix = "fix fixed",
+                note = "note",
+                version = "version",
+                section = "section",
+            }
+            local SECTION_NAMES = {
+                ["what's new"] = true,
+                ["improvements"] = true,
+                ["bug fixes"] = true,
+                ["known issues"] = true,
+                ["notes"] = true,
+            }
+
+            local function kindOf(value)
+                if type(value) ~= "string" then
+                    return "text"
+                end
+                return KIND_ALIAS[value] or KIND_ALIAS[StringLower(value)] or "text"
+            end
+
+            local function stamp(entry)
+                entry.search = StringLower((entry.text or "") .. " " .. (SEARCH_HINT[entry.kind] or ""))
+                return entry
+            end
+
+            local function parseChangelog(raw)
+                local out = {}
+                raw = tostring(raw or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+                for line in (raw .. "\n"):gmatch("(.-)\n") do
+                    local text = trim(line)
+                    if text == "" or text:find("^```") or text:match("^%-%-%-+$") or text:sub(1, 2) == "||" then
+                        continue
+                    end
+                    text = trim(text:gsub("%*%*(.-)%*%*", "%1"):gsub("`", ""):gsub("^#+%s*", ""))
+                    if text == "" then
+                        continue
+                    end
+
+                    local tag, rest = text:match("^%[([+%-%*!%?])%]%s*(.*)$")
+                    if tag and TAG_KIND[tag] then
+                        local kind = TAG_KIND[tag]
+                        local body = trim(rest)
+                        if body == "" then
+                            body = text
+                        end
+                        TableInsert(out, stamp({ kind = kind, text = body }))
+                        continue
+                    end
+
+                    local sym, symBody = text:match("^([+%*])%s+(.+)$")
+                    if sym and symBody then
+                        TableInsert(out, stamp({ kind = sym == "+" and "add" or "update", text = trim(symBody) }))
+                        continue
+                    end
+
+                    local mark, markBody = text:match("^([!%?])%s+(.+)$")
+                    if mark and markBody then
+                        TableInsert(out, stamp({ kind = mark == "!" and "fix" or "note", text = trim(markBody) }))
+                        continue
+                    end
+
+                    if text:match("^[Vv]ersion%s*:") or text:match("^[Rr]elease%s+[Dd]ate%s*:") or text:match("^v%d+[%d%.]*") then
+                        TableInsert(out, stamp({ kind = "version", text = text }))
+                        continue
+                    end
+
+                    local bracket = text:match("^%[(.+)%]$")
+                    if bracket then
+                        TableInsert(out, stamp({ kind = "section", text = trim(bracket) }))
+                        continue
+                    end
+
+                    local lower = StringLower(text)
+                    if SECTION_NAMES[lower] or (text:sub(-1) == ":" and #text <= 48 and not text:find("://", 1, true)) then
+                        TableInsert(out, stamp({ kind = "section", text = text:gsub(":$", "") }))
+                        continue
+                    end
+
+                    local bullet = text:match("^[•·]%s*(.+)$") or text:match("^%-%s+(.+)$")
+                    if bullet then
+                        TableInsert(out, stamp({ kind = "bullet", text = trim(bullet) }))
+                        continue
+                    end
+
+                    TableInsert(out, stamp({ kind = "text", text = text }))
+                end
+                return out
+            end
+
+            local function normalizeEntries(list)
+                local out = {}
+                for _, item in list do
+                    if type(item) == "string" then
+                        local parsed = parseChangelog(item)
+                        for _, entry in parsed do
+                            TableInsert(out, entry)
+                        end
+                    elseif type(item) == "table" then
+                        local text = trim(item.Text or item.Line or item.Name or "")
+                        if text ~= "" then
+                            TableInsert(out, stamp({
+                                kind = kindOf(item.Kind or item.Tag or item.Type or "text"),
+                                text = text,
+                            }))
+                        end
+                    end
+                end
+                return out
+            end
+
+            local entries
+            if type(Data.Entries) == "table" and #Data.Entries > 0 then
+                entries = normalizeEntries(Data.Entries)
+            else
+                entries = parseChangelog(Data.Text or Data.ChangelogText or Data.Body or Data.Content or "")
+            end
+
+            local baseSubtitle = ""
+            if Data.Subtitle ~= nil then
+                baseSubtitle = tostring(Data.Subtitle)
+            elseif Data.Game ~= nil then
+                baseSubtitle = tostring(Data.Game)
+            else
+                for _, entry in entries do
+                    if entry.kind == "version" then
+                        baseSubtitle = entry.text
+                        break
+                    end
+                end
+            end
+
+            local titleText = tostring(Data.Title or Data.Name or "Changelogs")
+            local iconName = Data.Icon or "file-text"
+
+            local function collectButtons(source)
+                local list = {}
+                local function push(entry)
+                    if type(entry) ~= "table" then
+                        return
+                    end
+                    local name = entry.Name or entry.Text or entry.Label
+                    if name == nil or tostring(name) == "" then
+                        return
+                    end
+                    local close = entry.Close == true or StringLower(tostring(name)) == "close"
+                    TableInsert(list, {
+                        Name = tostring(name),
+                        Icon = entry.Icon,
+                        Clipboard = entry.Clipboard or entry.Copy,
+                        Callback = entry.Callback,
+                        Primary = entry.Primary == true or close,
+                        Close = close,
+                    })
+                end
+                if type(source.Buttons) == "table" then
+                    for _, entry in source.Buttons do
+                        push(entry)
+                    end
+                end
+                local alt = source.Altbutton or source.AltButton
+                if type(alt) == "table" then
+                    push({
+                        Name = alt.Name,
+                        Icon = alt.Icon or (alt.Clipboard and "copy" or nil),
+                        Clipboard = alt.Clipboard,
+                        Callback = alt.Callback,
+                    })
+                end
+                local hasClose = false
+                for _, entry in list do
+                    if entry.Close then
+                        hasClose = true
+                        entry.Primary = true
+                    end
+                end
+                if not hasClose then
+                    push({
+                        Name = source.CloseText or "Close",
+                        Close = true,
+                        Primary = true,
+                    })
+                end
+                return list
+            end
+
+            local buttons = collectButtons(Data)
+
+            local layer = Instances:Create("Frame", {
+                Parent = Library.Holder.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Size = UDim2New(1, 0, 1, 0),
+                ZIndex = Z_BACK,
+                Active = true,
+            })
+
+            local backdrop = Instances:Create("TextButton", {
+                Parent = layer.Instance,
+                Name = "\0",
+                AutoButtonColor = false,
+                Text = "",
+                BorderSizePixel = 0,
+                Size = UDim2New(1, 0, 1, 0),
+                BackgroundColor3 = FromRGB(5, 5, 8),
+                BackgroundTransparency = 1,
+                ZIndex = Z_BACK,
+                Active = true,
+            })
+
+            local shadow = Instances:Create("Frame", {
+                Parent = layer.Instance,
+                Name = "\0",
+                AnchorPoint = Vector2New(0, 0),
+                BackgroundColor3 = FromRGB(0, 0, 0),
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                ZIndex = Z_SHADOW,
+                Active = false,
+            })
+            Instances:Create("UICorner", {
+                Parent = shadow.Instance,
+                CornerRadius = UDimNew(0, 20),
+            })
+
+            local modal = Instances:Create("Frame", {
+                Parent = layer.Instance,
+                Name = "\0",
+                AnchorPoint = Vector2New(0.5, 0.5),
+                Position = UDim2New(0.5, 0, 0.5, 0),
+                Size = UDim2FromOffset(520, 620),
+                BackgroundColor3 = Library.Theme.Background,
+                BorderSizePixel = 0,
+                ClipsDescendants = true,
+                Active = true,
+                ZIndex = Z_MODAL,
+            })
+            bindTheme(modal, { BackgroundColor3 = "Background" }, shellThemed)
+            Instances:Create("UICorner", {
+                Parent = modal.Instance,
+                CornerRadius = UDimNew(0, 16),
+            })
+            Instances:Create("UIGradient", {
+                Parent = modal.Instance,
+                Rotation = 90,
+                Color = RGBSequence{
+                    RGBSequenceKeypoint(0, Color3.new(1, 1, 1)),
+                    RGBSequenceKeypoint(1, Color3.new(1, 1, 1)),
+                },
+                Transparency = NumSequence{
+                    NumSequenceKeypoint(0, 0.88),
+                    NumSequenceKeypoint(0.3, 0.96),
+                    NumSequenceKeypoint(1, 1),
+                },
+            })
+            local modalStroke = Instances:Create("UIStroke", {
+                Parent = modal.Instance,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                Thickness = 1.25,
+                Transparency = 0.28,
+                Color = Library.Theme.Accent,
+            })
+            bindTheme(modalStroke, { Color = function()
+                return Library.Theme.Accent:Lerp(Library.Theme.Outline, 0.42)
+            end }, shellThemed)
+
+            local scale = Instance.new("UIScale")
+            scale.Name = "\0"
+            scale.Scale = 0.94
+            scale.Parent = modal.Instance
+
+            local scrollTop = PAD + headerH + gapAfterHeader + searchH + gapAfterSearch
+            local scrollBottom = bottomPad + footerH + gapAboveFooter
+
+            local header = Instances:Create("Frame", {
+                Parent = modal.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Position = UDim2New(0, PAD, 0, PAD - 2),
+                Size = UDim2New(1, -PAD * 2, 0, headerH),
+                ZIndex = Z_UI,
+                Active = false,
+            })
+
+            local dragBtn = Instances:Create("TextButton", {
+                Parent = header.Instance,
+                Name = "\0",
+                AutoButtonColor = false,
+                Text = "",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Size = UDim2New(1, -(closeSize + 8), 1, 0),
+                ZIndex = Z_UI,
+                Active = true,
+            })
+
+            local badge = Instances:Create("Frame", {
+                Parent = dragBtn.Instance,
+                Name = "\0",
+                AnchorPoint = Vector2New(0, 0.5),
+                Position = UDim2New(0, 0, 0.5, 0),
+                Size = UDim2FromOffset(40, 40),
+                BackgroundColor3 = Library.Theme.Accent,
+                BackgroundTransparency = 0.84,
+                BorderSizePixel = 0,
+                ZIndex = Z_UI + 1,
+                Active = false,
+            })
+            bindTheme(badge, { BackgroundColor3 = "Accent" }, shellThemed)
+            Instances:Create("UICorner", {
+                Parent = badge.Instance,
+                CornerRadius = UDimNew(0, 12),
+            })
+            local badgeStroke = Instances:Create("UIStroke", {
+                Parent = badge.Instance,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                Thickness = 1,
+                Transparency = 0.45,
+                Color = Library.Theme.Accent,
+            })
+            bindTheme(badgeStroke, { Color = "Accent" }, shellThemed)
+
+            local badgeIcon = Instances:Create("ImageLabel", {
+                Parent = badge.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                AnchorPoint = Vector2New(0.5, 0.5),
+                Position = UDim2New(0.5, 0, 0.5, 0),
+                Size = UDim2FromOffset(18, 18),
+                ZIndex = Z_UI + 2,
+                Active = false,
+            })
+            Library:SetIcon(badgeIcon.Instance, iconName)
+            accentFill(badgeIcon.Instance, shellThemed, -115)
+
+            local title = Instances:Create("TextLabel", {
+                Parent = dragBtn.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Position = UDim2New(0, 52, 0, touchUi and 8 or 6),
+                Size = UDim2New(1, -60, 0, 24),
+                FontFace = Library.Fonts.ExtraBold,
+                Text = titleText,
+                TextSize = touchUi and 18 or 20,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextYAlignment = Enum.TextYAlignment.Center,
+                TextColor3 = FromRGB(255, 255, 255),
+                ZIndex = Z_UI + 2,
+                Active = false,
+            })
+            pcall(function()
+                title.Instance.TextTruncate = Enum.TextTruncate.AtEnd
+            end)
+            accentFill(title.Instance, shellThemed, -90)
+
+            local metaLabel = Instances:Create("TextLabel", {
+                Parent = dragBtn.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Position = UDim2New(0, 52, 0, touchUi and 34 or 32),
+                Size = UDim2New(1, -60, 0, 16),
+                FontFace = Library.Fonts.Light,
+                Text = "",
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextYAlignment = Enum.TextYAlignment.Center,
+                TextColor3 = Library.Theme.Text,
+                TextTransparency = 0.32,
+                ZIndex = Z_UI + 2,
+                Active = false,
+            })
+            bindTheme(metaLabel, { TextColor3 = "Text" }, shellThemed)
+            pcall(function()
+                metaLabel.Instance.TextTruncate = Enum.TextTruncate.AtEnd
+            end)
+
+            local xBtn = Instances:Create("TextButton", {
+                Parent = header.Instance,
+                Name = "\0",
+                AutoButtonColor = false,
+                Text = "",
+                AnchorPoint = Vector2New(1, 0.5),
+                Position = UDim2New(1, 0, 0.5, 0),
+                Size = UDim2FromOffset(closeSize, closeSize),
+                BackgroundColor3 = Library.Theme.Element,
+                BorderSizePixel = 0,
+                ZIndex = Z_BTN,
+                Active = true,
+            })
+            bindTheme(xBtn, { BackgroundColor3 = "Element" }, shellThemed)
+            Instances:Create("UICorner", {
+                Parent = xBtn.Instance,
+                CornerRadius = UDimNew(1, 0),
+            })
+            local xStroke = Instances:Create("UIStroke", {
+                Parent = xBtn.Instance,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                Thickness = 1,
+                Transparency = 0.4,
+                Color = Library.Theme.Outline,
+            })
+            bindTheme(xStroke, { Color = "Outline" }, shellThemed)
+            local xIcon = Instances:Create("ImageLabel", {
+                Parent = xBtn.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                AnchorPoint = Vector2New(0.5, 0.5),
+                Position = UDim2New(0.5, 0, 0.5, 0),
+                Size = UDim2FromOffset(16, 16),
+                ZIndex = Z_BTN + 1,
+                Active = false,
+            })
+            Library:SetIcon(xIcon.Instance, "x")
+            if xIcon.Instance.Image == "" then
+                xBtn.Instance.Text = "×"
+                xBtn.Instance.TextSize = 22
+                xBtn.Instance.FontFace = Library.Fonts.Medium
+                bindTheme(xBtn, { TextColor3 = "Text" }, shellThemed)
+            else
+                accentFill(xIcon.Instance, shellThemed, -115)
+            end
+            tactile(xBtn)
+
+            local searchBox
+            local searchStroke
+            local clearBtn
+            if showSearch then
+                local searchWrap = Instances:Create("Frame", {
+                    Parent = modal.Instance,
+                    Name = "\0",
+                    Position = UDim2New(0, PAD, 0, PAD + headerH + gapAfterHeader - 2),
+                    Size = UDim2New(1, -PAD * 2, 0, searchH),
+                    BackgroundColor3 = Library.Theme.Element,
+                    BorderSizePixel = 0,
+                    ZIndex = Z_UI,
+                    Active = true,
+                })
+                bindTheme(searchWrap, { BackgroundColor3 = "Element" }, shellThemed)
+                Instances:Create("UICorner", {
+                    Parent = searchWrap.Instance,
+                    CornerRadius = UDimNew(0, 10),
+                })
+                searchStroke = Instances:Create("UIStroke", {
+                    Parent = searchWrap.Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    Thickness = 1,
+                    Transparency = 0.45,
+                    Color = Library.Theme.Outline,
+                })
+                bindTheme(searchStroke, { Color = "Outline" }, shellThemed)
+
+                local searchIcon = Instances:Create("ImageLabel", {
+                    Parent = searchWrap.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    AnchorPoint = Vector2New(0, 0.5),
+                    Position = UDim2New(0, 12, 0.5, 0),
+                    Size = UDim2FromOffset(16, 16),
+                    ImageColor3 = Library.Theme.Text,
+                    ImageTransparency = 0.35,
+                    ZIndex = Z_UI + 2,
+                    Active = false,
+                })
+                bindTheme(searchIcon, { ImageColor3 = "Text" }, shellThemed)
+                Library:SetIcon(searchIcon.Instance, "search")
+
+                searchBox = Instances:Create("TextBox", {
+                    Parent = searchWrap.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AnchorPoint = Vector2New(0, 0.5),
+                    Position = UDim2New(0, 36, 0.5, 0),
+                    Size = UDim2New(1, -92, 1, -10),
+                    FontFace = Library.Font,
+                    Text = "",
+                    PlaceholderText = "Search notes",
+                    TextSize = touchUi and 15 or 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextColor3 = Library.Theme.Text,
+                    PlaceholderColor3 = Library.Theme.Text:Lerp(FromRGB(0, 0, 0), 0.45),
+                    ClearTextOnFocus = false,
+                    TextEditable = true,
+                    MultiLine = false,
+                    ZIndex = Z_UI + 3,
+                    Active = true,
+                })
+                bindTheme(searchBox, {
+                    TextColor3 = "Text",
+                    PlaceholderColor3 = function()
+                        return Library.Theme.Text:Lerp(FromRGB(0, 0, 0), 0.45)
+                    end,
+                }, shellThemed)
+                pcall(function()
+                    searchBox.Instance.Interactable = true
+                    searchBox.Instance.Selectable = true
+                end)
+
+                clearBtn = Instances:Create("TextButton", {
+                    Parent = searchWrap.Instance,
+                    Name = "\0",
+                    AutoButtonColor = false,
+                    Text = "×",
+                    FontFace = Library.Fonts.Medium,
+                    TextSize = 18,
+                    TextColor3 = Library.Theme.Text,
+                    TextTransparency = 0.15,
+                    AnchorPoint = Vector2New(1, 0.5),
+                    Position = UDim2New(1, -6, 0.5, 0),
+                    Size = UDim2FromOffset(touchUi and 36 or 30, touchUi and 36 or 30),
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Visible = false,
+                    ZIndex = Z_UI + 5,
+                    Active = true,
+                })
+                bindTheme(clearBtn, { TextColor3 = "Text" }, shellThemed)
+                Instances:Create("UICorner", {
+                    Parent = clearBtn.Instance,
+                    CornerRadius = UDimNew(1, 0),
+                })
+
+                local function focusSearch()
+                    pcall(function()
+                        searchBox.Instance.Active = true
+                        searchBox.Instance.Selectable = true
+                        searchBox.Instance.TextEditable = true
+                        if searchBox.Instance.Interactable ~= nil then
+                            searchBox.Instance.Interactable = true
+                        end
+                        searchBox.Instance:CaptureFocus()
+                    end)
+                end
+
+                local function paintSearch(focused)
+                    if not searchStroke or not searchStroke.Instance then
+                        return
+                    end
+                    searchStroke.Instance.Color = focused and Library.Theme.Accent or Library.Theme.Outline
+                    TweenService:Create(searchStroke.Instance, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Transparency = focused and 0.05 or 0.45,
+                    }):Play()
+                end
+
+                searchWrap:Connect("InputBegan", function(input)
+                    if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+                        return
+                    end
+                    local hits = Library.Holder.Instance:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
+                    for _, obj in hits do
+                        if obj == clearBtn.Instance then
+                            return
+                        end
+                    end
+                    focusSearch()
+                end)
+                searchBox:Connect("Focused", function()
+                    paintSearch(true)
+                    if touchUi and not userMoved then
+                        TweenService:Create(modal.Instance, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                            Position = UDim2New(0.5, 0, 0.42, 0),
+                        }):Play()
+                    end
+                end)
+                searchBox:Connect("FocusLost", function()
+                    paintSearch(false)
+                    if touchUi and not userMoved then
+                        TweenService:Create(modal.Instance, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                            Position = UDim2New(0.5, 0, 0.5, 0),
+                        }):Play()
+                    end
+                end)
+            end
+
+            local scroll = Instances:Create("ScrollingFrame", {
+                Parent = modal.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Position = UDim2New(0, PAD, 0, scrollTop),
+                Size = UDim2New(1, -PAD * 2, 1, -(scrollTop + scrollBottom)),
+                CanvasSize = UDim2New(0, 0, 0, 0),
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                ScrollBarThickness = touchUi and 5 or 3,
+                ScrollBarImageColor3 = Library.Theme.Accent,
+                ScrollBarImageTransparency = 0.15,
+                ScrollingDirection = Enum.ScrollingDirection.Y,
+                ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
+                VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar,
+                ScrollingEnabled = true,
+                Active = true,
+                ZIndex = Z_UI,
+            })
+            bindTheme(scroll, { ScrollBarImageColor3 = "Accent" }, shellThemed)
+            Instances:Create("UIPadding", {
+                Parent = scroll.Instance,
+                PaddingTop = UDimNew(0, 2),
+                PaddingBottom = UDimNew(0, 8),
+                PaddingRight = UDimNew(0, 4),
+            })
+            local scrollLayout = Instances:Create("UIListLayout", {
+                Parent = scroll.Instance,
+                FillDirection = Enum.FillDirection.Vertical,
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                Padding = UDimNew(0, 6),
+            })
+
+            local emptyLabel = Instances:Create("TextLabel", {
+                Parent = modal.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                AnchorPoint = Vector2New(0.5, 0.5),
+                Position = UDim2New(0.5, 0, 0.55, 0),
+                Size = UDim2New(1, -80, 0, 40),
+                FontFace = Library.Fonts.Light,
+                Text = "No notes yet",
+                TextSize = 14,
+                TextColor3 = Library.Theme.Text,
+                TextTransparency = 0.4,
+                TextWrapped = true,
+                Visible = false,
+                ZIndex = Z_BTN,
+                Active = false,
+            })
+            bindTheme(emptyLabel, { TextColor3 = "Text" }, shellThemed)
+
+            local sep = Instances:Create("Frame", {
+                Parent = modal.Instance,
+                Name = "\0",
+                AnchorPoint = Vector2New(0, 1),
+                Position = UDim2New(0, PAD, 1, -(bottomPad + footerH + 8)),
+                Size = UDim2New(1, -PAD * 2, 0, 1),
+                BackgroundColor3 = Library.Theme.Outline,
+                BackgroundTransparency = 0.35,
+                BorderSizePixel = 0,
+                ZIndex = Z_UI,
+                Active = false,
+            })
+            bindTheme(sep, { BackgroundColor3 = "Outline" }, shellThemed)
+
+            local footer = Instances:Create("Frame", {
+                Parent = modal.Instance,
+                Name = "\0",
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                AnchorPoint = Vector2New(0, 1),
+                Position = UDim2New(0, PAD, 1, -bottomPad),
+                Size = UDim2New(1, -PAD * 2, 0, footerH),
+                ZIndex = Z_BTN,
+                Active = true,
+            })
+
+            local TAGS = {
+                add = { Label = "ADD", Color = FromRGB(92, 214, 146) },
+                remove = { Label = "DEL", Color = FromRGB(255, 114, 128) },
+                fix = { Label = "FIX", Color = FromRGB(255, 178, 78) },
+                note = { Label = "NOTE", Color = FromRGB(176, 170, 204) },
+                update = { Label = "UPD", Theme = true },
+            }
+
+            local function paintMeta(count)
+                local notes = (count == 1) and "1 note" or (tostring(count) .. " notes")
+                if baseSubtitle ~= "" then
+                    metaLabel.Instance.Text = baseSubtitle .. "   ·   " .. notes
+                else
+                    metaLabel.Instance.Text = notes
+                end
+            end
+
+            local function clearRows()
+                detachList(rowThemed)
+                local kill = {}
+                for _, child in scroll.Instance:GetChildren() do
+                    if child:IsA("Frame") then
+                        TableInsert(kill, child)
+                    end
+                end
+                for _, child in kill do
+                    child:Destroy()
+                end
+                table.clear(rowRefs)
+            end
+
+            local function createRow(entry, order)
+                local kind = entry.kind
+                local headerRow = kind == "version" or kind == "section"
+                local tag = TAGS[kind]
+                local frame = Instances:Create("Frame", {
+                    Parent = scroll.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = tag and 0.06 or 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2New(1, 0, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    LayoutOrder = order,
+                    ZIndex = Z_UI + 1,
+                    Active = false,
+                })
+                if tag then
+                    bindTheme(frame, { BackgroundColor3 = "Element" }, rowThemed)
+                    Instances:Create("UICorner", {
+                        Parent = frame.Instance,
+                        CornerRadius = UDimNew(0, 8),
+                    })
+                    local rim = Instances:Create("UIStroke", {
+                        Parent = frame.Instance,
+                        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                        Thickness = 1,
+                        Transparency = 0.5,
+                        Color = tag.Color or Library.Theme.Accent,
+                    })
+                    if tag.Theme then
+                        bindTheme(rim, { Color = "Accent" }, rowThemed)
+                    end
+                end
+                local topPad = 2
+                if kind == "version" and order > 1 then
+                    topPad = 12
+                elseif kind == "section" then
+                    topPad = 8
+                elseif tag then
+                    topPad = 8
+                end
+                Instances:Create("UIPadding", {
+                    Parent = frame.Instance,
+                    PaddingTop = UDimNew(0, topPad),
+                    PaddingBottom = UDimNew(0, tag and 8 or 2),
+                    PaddingLeft = UDimNew(0, tag and 10 or (kind == "bullet" and 8 or 2)),
+                    PaddingRight = UDimNew(0, tag and 10 or 4),
+                })
+                Instances:Create("UIListLayout", {
+                    Parent = frame.Instance,
+                    FillDirection = Enum.FillDirection.Vertical,
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    Padding = UDimNew(0, tag and 6 or 0),
+                })
+
+                if tag then
+                    local chip = Instances:Create("TextLabel", {
+                        Parent = frame.Instance,
+                        Name = "\0",
+                        BackgroundColor3 = tag.Color or Library.Theme.Accent,
+                        BackgroundTransparency = 0.82,
+                        BorderSizePixel = 0,
+                        AutomaticSize = Enum.AutomaticSize.X,
+                        Size = UDim2New(0, 0, 0, 18),
+                        FontFace = Library.Fonts.Bold,
+                        Text = tag.Label,
+                        TextSize = 11,
+                        TextColor3 = tag.Color or Library.Theme.Accent,
+                        ZIndex = Z_UI + 2,
+                        LayoutOrder = 1,
+                        Active = false,
+                    })
+                    Instances:Create("UICorner", {
+                        Parent = chip.Instance,
+                        CornerRadius = UDimNew(0, 6),
+                    })
+                    Instances:Create("UIPadding", {
+                        Parent = chip.Instance,
+                        PaddingLeft = UDimNew(0, 7),
+                        PaddingRight = UDimNew(0, 7),
+                    })
+                    if tag.Theme then
+                        bindTheme(chip, { TextColor3 = "Accent", BackgroundColor3 = "Accent" }, rowThemed)
+                    end
+                end
+
+                local shown = entry.text
+                if kind == "bullet" then
+                    shown = "•  " .. shown
+                end
+                local label = Instances:Create("TextLabel", {
+                    Parent = frame.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2New(1, -1, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    FontFace = kind == "version" and Library.Fonts.ExtraBold or (kind == "section" and Library.Fonts.Medium or Library.Fonts.Light),
+                    Text = kind == "section" and string.upper(shown) or shown,
+                    TextSize = kind == "version" and (touchUi and 18 or 17) or (kind == "section" and 12 or (touchUi and 15 or 14)),
+                    TextWrapped = true,
+                    RichText = false,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextYAlignment = Enum.TextYAlignment.Top,
+                    TextTransparency = kind == "section" and 0.28 or (tag and 0 or 0.08),
+                    TextColor3 = FromRGB(255, 255, 255),
+                    LayoutOrder = 2,
+                    ZIndex = Z_UI + 2,
+                    Active = false,
+                })
+                if kind == "version" then
+                    accentFill(label.Instance, rowThemed, -90)
+                else
+                    bindTheme(label, { TextColor3 = "Text" }, rowThemed)
+                end
+
+                lift(frame.Instance, Z_UI + 1)
+                TableInsert(rowRefs, {
+                    frame = frame.Instance,
+                    entry = entry,
+                    header = headerRow,
+                })
+            end
+
+            local function applyFilter(query)
+                query = StringLower(trim(query))
+                local visible = {}
+                if query == "" then
+                    for index = 1, #rowRefs do
+                        visible[index] = true
+                    end
+                else
+                    local lastVersion = nil
+                    local lastSection = nil
+                    for index, row in rowRefs do
+                        local kind = row.entry.kind
+                        if kind == "version" then
+                            lastVersion = index
+                            lastSection = nil
+                        elseif kind == "section" then
+                            lastSection = index
+                        end
+                        if StringFind(row.entry.search or "", query, 1, true) then
+                            visible[index] = true
+                            if lastVersion then
+                                visible[lastVersion] = true
+                            end
+                            if lastSection and lastSection ~= index then
+                                visible[lastSection] = true
+                            end
+                            if kind == "version" or kind == "section" then
+                                for inner = index + 1, #rowRefs do
+                                    local nextKind = rowRefs[inner].entry.kind
+                                    if nextKind == "version" or (kind == "section" and nextKind == "section") then
+                                        break
+                                    end
+                                    visible[inner] = true
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local any = false
+                local notes = 0
+                for index, row in rowRefs do
+                    local on = visible[index] == true
+                    row.frame.Visible = on
+                    if on then
+                        any = true
+                        if not row.header then
+                            notes = notes + 1
+                        end
+                    end
+                end
+                emptyLabel.Instance.Text = (#rowRefs == 0) and "No notes yet" or "Nothing matches"
+                emptyLabel.Instance.Visible = not any
+                paintMeta(notes)
+                scroll.Instance.CanvasPosition = Vector2New(0, 0)
+            end
+
+            local function render(list)
+                clearRows()
+                for index, entry in list do
+                    createRow(entry, index)
+                end
+                local query = ""
+                if searchBox and searchBox.Instance then
+                    query = searchBox.Instance.Text or ""
+                end
+                applyFilter(query)
+            end
+
+            if searchBox then
+                searchBox:Connect("Changed", function(prop)
+                    if prop == "Text" then
+                        local has = searchBox.Instance.Text ~= ""
+                        if clearBtn then
+                            clearBtn.Instance.Visible = has
+                            clearBtn.Instance.Active = has
+                        end
+                        applyFilter(searchBox.Instance.Text)
+                    end
+                end)
+            end
+
+            local function fitSize()
+                if cleaned or not Library.Holder or not Library.Holder.Instance then
+                    return
+                end
+                local sz = Library.Holder.Instance.AbsoluteSize
+                if sz.X < 40 or sz.Y < 40 then
+                    return
+                end
+                local w, h
+                if touchUi or sz.X < 760 then
+                    w = MathClamp(sz.X - 16, 240, 560)
+                    h = MathClamp(sz.Y - 16, 280, 740)
+                else
+                    w = MathClamp(MathFloor(sz.X * 0.38), 480, 560)
+                    h = MathClamp(MathFloor(sz.Y * 0.74), 520, 700)
+                end
+                w = math.min(w, MathMax(200, sz.X - 10))
+                h = math.min(h, MathMax(220, sz.Y - 10))
+                modal.Instance.Size = UDim2FromOffset(MathFloor(w), MathFloor(h))
+                if not userMoved then
+                    modal.Instance.AnchorPoint = Vector2New(0.5, 0.5)
+                    modal.Instance.Position = UDim2New(0.5, 0, 0.5, 0)
+                else
+                    task.defer(function()
+                        if not cleaned then
+                            api.Clamp()
+                        end
+                    end)
+                end
+            end
+
+            local function followShadow()
+                if cleaned or not shadow.Instance or not modal.Instance or not layer.Instance then
+                    return
+                end
+                local ms = modal.Instance.AbsoluteSize
+                if ms.X < 2 or ms.Y < 2 then
+                    return
+                end
+                shadow.Instance.Size = UDim2FromOffset(ms.X + 22, ms.Y + 22)
+                local ap = modal.Instance.AbsolutePosition
+                local pap = layer.Instance.AbsolutePosition
+                shadow.Instance.Position = UDim2FromOffset(ap.X - pap.X - 11, ap.Y - pap.Y - 7)
+            end
+
+            function api.Clamp()
+                if cleaned then
+                    return
+                end
+                local parent = layer.Instance
+                local psz = parent.AbsoluteSize
+                local ms = modal.Instance.AbsoluteSize
+                if psz.X < 1 or ms.X < 1 then
+                    return
+                end
+                local pos = modal.Instance.Position
+                local anchor = modal.Instance.AnchorPoint
+                local left = pos.X.Scale * psz.X + pos.X.Offset - anchor.X * ms.X
+                local top = pos.Y.Scale * psz.Y + pos.Y.Offset - anchor.Y * ms.Y
+                local nx = MathClamp(left, 0, MathMax(0, psz.X - ms.X))
+                local ny = MathClamp(top, 0, MathMax(0, psz.Y - ms.Y))
+                modal.Instance.Position = UDim2FromOffset(nx + anchor.X * ms.X, ny + anchor.Y * ms.Y)
+                followShadow()
+            end
+
+            local function cleanup()
+                if cleaned then
+                    return
+                end
+                cleaned = true
+                if dragWatch then
+                    pcall(function()
+                        dragWatch:Disconnect()
+                    end)
+                    dragWatch = nil
+                end
+                for _, conn in conns do
+                    pcall(function()
+                        conn:Disconnect()
+                    end)
+                end
+                table.clear(conns)
+                detachList(shellThemed)
+                detachList(rowThemed)
+                if Library and Library._changelog == api then
+                    Library._changelog = nil
+                end
+            end
+
+            local function hide()
+                if cleaned or closing then
+                    return
+                end
+                closing = true
+                local info = TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+                pcall(function()
+                    TweenService:Create(scale, info, { Scale = 0.97 }):Play()
+                    TweenService:Create(backdrop.Instance, info, { BackgroundTransparency = 1 }):Play()
+                    TweenService:Create(shadow.Instance, info, { BackgroundTransparency = 1 }):Play()
+                end)
+                task.delay(0.17, function()
+                    local spec = Data.Notification
+                    local shouldTell = api._silent ~= true and Data.Notifications ~= false and type(spec) == "table"
+                    local titleNote = spec and (spec.Title or spec.title)
+                    local bodyNote = spec and (spec.Content or spec.Description or spec.content)
+                    local durationNote = spec and (spec.Duration or spec.Time)
+                    if layer.Instance and layer.Instance.Parent then
+                        layer.Instance:Destroy()
+                    else
+                        cleanup()
+                    end
+                    if shouldTell and Library and Library.Notification then
+                        task.defer(function()
+                            if Library and Library.Notification then
+                                Library:Notification({
+                                    Title = titleNote or "Changelog",
+                                    Description = bodyNote or "The changelog has been closed",
+                                    Duration = durationNote or 3,
+                                })
+                            end
+                        end)
+                    end
+                end)
+            end
+
+            local function flashLabel(label, message)
+                if not label then
+                    return
+                end
+                local previous = label.Text
+                label.Text = message
+                task.delay(1.15, function()
+                    if label.Parent and label.Text == message then
+                        label.Text = previous
+                    end
+                end)
+            end
+
+            local function runButton(def, label)
+                if def.Close then
+                    hide()
+                    return
+                end
+                if type(def.Callback) == "function" then
+                    Library:SafeCall(def.Callback)
+                end
+                local clip = def.Clipboard
+                if type(clip) ~= "string" or clip == "" then
+                    return
+                end
+                local copied = false
+                pcall(function()
+                    if setclipboard then
+                        setclipboard(clip)
+                        copied = true
+                    elseif toclipboard then
+                        toclipboard(clip)
+                        copied = true
+                    end
+                end)
+                local pack = Data.AltbuttonNotification
+                if copied then
+                    local spec = pack and pack.Success
+                    flashLabel(label, "Copied")
+                    pushNotice(spec and spec.Title or "Copied", spec and (spec.Content or spec.Description) or "Copied to clipboard.", spec and spec.Duration or 3)
+                else
+                    local spec = pack and pack.Failure
+                    flashLabel(label, "No clipboard")
+                    pushNotice(spec and spec.Title or "Clipboard", spec and (spec.Content or spec.Description) or "Clipboard is not available on this executor.", spec and spec.Duration or 4)
+                end
+            end
+
+            local buttonCount = #buttons
+            local buttonHost = footer.Instance
+            if buttonCount > 3 then
+                local scroller = Instances:Create("ScrollingFrame", {
+                    Parent = footer.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2New(1, 0, 1, 0),
+                    CanvasSize = UDim2New(0, 0, 0, 0),
+                    AutomaticCanvasSize = Enum.AutomaticSize.X,
+                    ScrollBarThickness = 0,
+                    ScrollingDirection = Enum.ScrollingDirection.X,
+                    ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
+                    Active = true,
+                    ZIndex = Z_BTN,
+                })
+                buttonHost = Instances:Create("Frame", {
+                    Parent = scroller.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    Size = UDim2New(0, 0, 1, 0),
+                    ZIndex = Z_BTN,
+                }).Instance
+                Instances:Create("UIListLayout", {
+                    Parent = buttonHost,
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                    Padding = UDimNew(0, 8),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                })
+            else
+                Instances:Create("UIListLayout", {
+                    Parent = footer.Instance,
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                    Padding = UDimNew(0, 8),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                })
+            end
+
+            for index, def in buttons do
+                local wide = buttonCount > 3
+                local btn = Instances:Create("TextButton", {
+                    Parent = buttonHost,
+                    Name = "\0",
+                    AutoButtonColor = false,
+                    Text = "",
+                    BorderSizePixel = 0,
+                    LayoutOrder = index,
+                    Size = wide and UDim2FromOffset(156, footerH) or UDim2New(1 / buttonCount, buttonCount > 1 and -8 or 0, 1, 0),
+                    BackgroundColor3 = def.Primary and FromRGB(255, 255, 255) or Library.Theme.Element,
+                    ClipsDescendants = true,
+                    ZIndex = Z_BTN,
+                    Active = true,
+                })
+                if def.Primary then
+                    accentFill(btn.Instance, shellThemed, 18)
+                else
+                    bindTheme(btn, { BackgroundColor3 = "Element" }, shellThemed)
+                    local stroke = Instances:Create("UIStroke", {
+                        Parent = btn.Instance,
+                        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                        Thickness = 1,
+                        Transparency = 0.35,
+                        Color = Library.Theme.Outline,
+                    })
+                    bindTheme(stroke, { Color = "Outline" }, shellThemed)
+                end
+                Instances:Create("UICorner", {
+                    Parent = btn.Instance,
+                    CornerRadius = UDimNew(0, 8),
+                })
+
+                local hasIcon = false
+                if def.Icon and not def.Close then
+                    local icon = Instances:Create("ImageLabel", {
+                        Parent = btn.Instance,
+                        Name = "\0",
+                        BackgroundTransparency = 1,
+                        AnchorPoint = Vector2New(0, 0.5),
+                        Position = UDim2New(0, 12, 0.5, 0),
+                        Size = UDim2FromOffset(16, 16),
+                        ZIndex = Z_BTN + 2,
+                        Active = false,
+                        ImageColor3 = def.Primary and readableOnAccent() or FromRGB(255, 255, 255),
+                    })
+                    Library:SetIcon(icon.Instance, def.Icon)
+                    if icon.Instance.Image == "" then
+                        icon:Clean()
+                    else
+                        hasIcon = true
+                        if def.Primary then
+                            bindTheme(icon, { ImageColor3 = function()
+                                return readableOnAccent()
+                            end }, shellThemed)
+                        else
+                            accentFill(icon.Instance, shellThemed, -115)
+                        end
+                    end
+                end
+
+                local label = Instances:Create("TextLabel", {
+                    Parent = btn.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Position = UDim2New(0, hasIcon and 32 or 8, 0, 0),
+                    Size = UDim2New(1, hasIcon and -40 or -16, 1, 0),
+                    FontFace = def.Primary and Library.Fonts.Bold or Library.Fonts.Medium,
+                    Text = def.Name,
+                    TextSize = touchUi and 15 or 14,
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    TextYAlignment = Enum.TextYAlignment.Center,
+                    TextColor3 = def.Primary and readableOnAccent() or Library.Theme.Text,
+                    ZIndex = Z_BTN + 2,
+                    Active = false,
+                })
+                if def.Primary then
+                    bindTheme(label, { TextColor3 = function()
+                        return readableOnAccent()
+                    end }, shellThemed)
+                else
+                    bindTheme(label, { TextColor3 = "Text" }, shellThemed)
+                end
+                pcall(function()
+                    label.Instance.TextTruncate = Enum.TextTruncate.AtEnd
+                end)
+                tactile(btn)
+                bindPress(btn, function()
+                    runButton(def, label.Instance)
+                end)
+                lift(btn.Instance, Z_BTN)
+            end
+
+            if clearBtn then
+                bindPress(clearBtn, function()
+                    searchBox.Instance.Text = ""
+                    pcall(function()
+                        searchBox.Instance:ReleaseFocus()
+                    end)
+                end)
+            end
+
+            bindPress(xBtn, hide)
+            bindPress(backdrop, hide)
+
+            local armed = false
+            local dragging = false
+            local dragStart = nil
+            local startPos = nil
+            listen(dragBtn.Instance.InputBegan, function(input)
+                if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+                    return
+                end
+                armed = true
+                dragging = false
+                dragStart = input.Position
+                startPos = modal.Instance.Position
+                if dragWatch then
+                    pcall(function()
+                        dragWatch:Disconnect()
+                    end)
+                end
+                dragWatch = input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        armed = false
+                        dragging = false
+                        if dragWatch then
+                            dragWatch:Disconnect()
+                            dragWatch = nil
+                        end
+                    end
+                end)
+                TableInsert(conns, dragWatch)
+            end)
+            listen(UserInputService.InputChanged, function(input)
+                if not armed or not dragStart or not startPos then
+                    return
+                end
+                if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+                    return
+                end
+                local delta = input.Position - dragStart
+                if not dragging then
+                    if math.abs(delta.X) < 8 and math.abs(delta.Y) < 8 then
+                        return
+                    end
+                    dragging = true
+                    userMoved = true
+                end
+                modal.Instance.Position = UDim2New(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+                api.Clamp()
+            end)
+            listen(UserInputService.InputBegan, function(input)
+                if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB then
+                    hide()
+                end
+            end)
+            listen(layer.Instance.Destroying, cleanup)
+            listen(modal.Instance:GetPropertyChangedSignal("AbsolutePosition"), followShadow)
+            listen(modal.Instance:GetPropertyChangedSignal("AbsoluteSize"), followShadow)
+            listen(Library.Holder.Instance:GetPropertyChangedSignal("AbsoluteSize"), fitSize)
+
+            function api.Hide()
+                hide()
+            end
+
+            function api.Destroy()
+                api._silent = true
+                closing = true
+                if layer.Instance and layer.Instance.Parent then
+                    layer.Instance:Destroy()
+                else
+                    cleanup()
+                end
+            end
+
+            function api.IsOpen()
+                return not cleaned and layer.Instance ~= nil and layer.Instance.Parent ~= nil
+            end
+
+            function api.SetText(value)
+                if cleaned then
+                    return
+                end
+                if type(value) == "table" then
+                    render(normalizeEntries(value))
+                else
+                    render(parseChangelog(value))
+                end
+            end
+
+            function api.SetSubtitle(text)
+                if cleaned then
+                    return
+                end
+                baseSubtitle = tostring(text or "")
+                local query = ""
+                if searchBox and searchBox.Instance then
+                    query = searchBox.Instance.Text or ""
+                end
+                applyFilter(query)
+            end
+
+            render(entries)
+            fitSize()
+            followShadow()
+            lift(xBtn.Instance, Z_BTN)
+            if clearBtn then
+                lift(clearBtn.Instance, Z_UI + 5)
+            end
+
+            TweenService:Create(scale, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+            TweenService:Create(backdrop.Instance, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = 0.46,
+            }):Play()
+            TweenService:Create(shadow.Instance, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = 0.55,
+            }):Play()
+            task.defer(function()
+                if cleaned then
+                    return
+                end
+                fitSize()
+                followShadow()
+            end)
+
+            Library._changelog = api
+            return api
+        end
+
+        Library.ShowChangelog = Library.Changelog
+
+        Library.CreateChangelogDialog = function(self, Data)
+            if self ~= Library then
+                Data = self
+            end
+            if type(Data) ~= "table" then
+                Data = { ChangelogText = tostring(Data or "") }
+            else
+                Data = TableClone(Data)
+            end
+            if Data.Notifications == nil then
+                Data.Notifications = true
+            end
+            if Data.Search == nil then
+                Data.Search = true
+            end
+            if Data.Notifications and type(Data.Notification) ~= "table" then
+                Data.Notification = {
+                    Title = "Changelog",
+                    Content = "The changelog has been closed",
+                    Duration = 3,
+                }
+            end
+            return Library:Changelog(Data)
+        end
+
         Library.Window = function(self, Data)
             Data = Data or { }
 
