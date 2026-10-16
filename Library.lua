@@ -9680,9 +9680,18 @@ local Library do
             end
 
             function Dropdown:Remove(Option)
-                if Dropdown.Options[Option] then
-                    Dropdown.Options[Option].Button:Clean()
+                local data = Dropdown.Options[Option]
+                if data then
+                    data.Button:Clean()
                     Dropdown.Options[Option] = nil
+                    if Dropdown.OptionsWithIndexes then
+                        for Index = #Dropdown.OptionsWithIndexes, 1, -1 do
+                            local Row = Dropdown.OptionsWithIndexes[Index]
+                            if Row == data or (Row and Row.Name == Option) then
+                                TableRemove(Dropdown.OptionsWithIndexes, Index)
+                            end
+                        end
+                    end
                 end
                 if Dropdown.FilterRows then
                     Dropdown.FilterRows[Option] = nil
@@ -9690,12 +9699,19 @@ local Library do
             end
 
             function Dropdown:Refresh(List)
-                for _, opt in pairs(Dropdown.Options) do 
-                    Dropdown:Remove(opt.Name)
+                local Names = {}
+                for Name in Dropdown.Options do
+                    TableInsert(Names, Name)
+                end
+                for _, Name in Names do
+                    Dropdown:Remove(Name)
+                end
+                if Dropdown.OptionsWithIndexes then
+                    table.clear(Dropdown.OptionsWithIndexes)
                 end
 
                 List = List or {}
-                for _, Value in ipairs(List) do 
+                for _, Value in ipairs(List) do
                     Dropdown:Add(Value)
                 end
             end
@@ -11025,12 +11041,16 @@ local Library do
             end
 
             function Dropdown:Refresh(List)
-                for _, opt in pairs(Dropdown.Options) do 
-                    Dropdown:Remove(opt.Name)
+                local Names = {}
+                for Name in Dropdown.Options do
+                    TableInsert(Names, Name)
+                end
+                for _, Name in Names do
+                    Dropdown:Remove(Name)
                 end
 
                 List = List or {}
-                for _, Value in ipairs(List) do 
+                for _, Value in ipairs(List) do
                     Dropdown:Add(Value)
                 end
             end
