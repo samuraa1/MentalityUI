@@ -56,7 +56,7 @@ Window:Category("Main")
 
 local Main = Window:Page({
     Name = "Main",
-    Icon = "gamepad-2", -- Lucide icon name, or an asset id
+    Icon = "gamepad-2", -- Lucide name, "tabler:moon", or an asset id
 })
 
 local Section = Main:Section({
@@ -89,10 +89,12 @@ local Window = Library:Window({
     Name = "My Hub",
     SubName = "Subtitle under the title",
     Logo = "1234567890",
-    -- Size = UDim2.fromOffset(940, 720),
+    -- Size = UDim2.fromOffset(940, 860), -- PC default. Mobile default is 520 x 420
     -- MobileScale = 0.8,
 })
 ```
+
+A search box sits above the sidebar. It filters pages by name, and a matching category shows that whole group. Empty search shows everything again. There is no API for it.
 
 | Call | What it does |
 |---|---|
@@ -125,7 +127,7 @@ local Dash = Window:DashboardPage({
         { Name = "PING", Icon = "wifi", GetValue = function() return "0 ms" end },
     },
     Credits = {
-        { Name = "Author", Role = "Dev" },
+        { Name = "Author", Role = "Dev" }, -- drawn above Quick Access
     },
 })
 
@@ -192,6 +194,15 @@ Section:Dropdown({
     Callback = function(value) end,
 })
 
+Section:Dropdown({
+    Name = "Tags",
+    Flag = "Tags",
+    Items = { "One", "Two", "Three" },
+    Default = { "One" },
+    Multi = true, -- adds Select All and Select Nothing
+    Callback = function(list) end,
+})
+
 Section:Listbox({
     Flag = "List",
     Items = { "One", "Two" },
@@ -200,6 +211,8 @@ Section:Listbox({
     Callback = function(value) end,
 })
 ```
+
+The slider fill and the knob use the current accent color.
 
 The rest:
 
@@ -222,15 +235,50 @@ local KeybindList = Library:KeybindList("Keybinds")
 local Settings = Library:CreateSettingsPage(Window, KeybindList)
 ```
 
-That page has the theme list, accent colors, font, transparency, DPI, the floating button, the custom cursor, the menu key, and a config list (if the executor can read and write files).
+That page has the theme list, accent colors, font, transparency, DPI, the floating button, Anonymous Mode, the custom cursor, the menu key, and a config list (if the executor can read and write files).
+
+Anonymous Mode hides the dashboard name and avatar and shows a hat-glasses icon in the accent color. The flag is `AnonymousMode`. Turning it off restores the display name and the thumbnail.
 
 Pick **Halloween** in the theme list for the orange window. Pumpkins, ghosts, and a few other icons fall inside the window. Any other theme goes back to the normal dark look and the icons stop.
+
+## Icons
+
+Plain names are [Lucide](https://lucide.dev/) icons, loaded through [Molto](https://molto.pages.dev/). Other packs use a prefix:
+
+`tabler:moon`, `ph:house`, `heroicons:home`, `fluent:home`, `solar:bolt`, `material:home`
+
+A number, or `rbxassetid://...`, still works. The first time a pack is used it downloads that pack.
+
+## Changelog
+
+The sheet opens in the middle of the window and scales with it. The same text is stored in `Samuraa1Hub/Changelogs`. If the text has not changed, the next launch skips it. `Force = true` always opens it, which is what a "View changelogs" button should pass. `Remember = false` never writes the file.
+
+```lua
+Library:Changelog({
+    Title = "My Hub",
+    Text = [[Version: 1.0.0
++ Added a feature
+- Removed an old toggle
+[!] Fixed a nil path
+[?] A note
+[*] Updated the farm
+[UI]
+- Search is in the sidebar
+]],
+    Force = true,
+    Buttons = {
+        { Name = "Discord", Clipboard = "https://discord.gg/example" },
+    },
+})
+```
+
+Line tags: `[+]` add, `[-]` remove, `[!]` fix, `[?]` note, `[*]` update. A leading `+ ` is the same as add. `Version: 1.0.0` and `[Section]` become headers.
 
 ## Themes and configs
 
 You do not have to load ThemeManager or SaveManager. The settings page already has a theme dropdown and config buttons.
 
-Use ThemeManager when you want a theme section with presets, a default theme on startup, and saving your own colors:
+Use ThemeManager when you want a theme section with presets, a default theme on startup, and saving your own colors. Presets come from the library. From October 1 through November 15, Halloween is the startup theme until you save a different default. A saved theme file with the same name as a preset is the one that loads. `LoadDefault` is the same as applying that startup theme, and it does not apply twice.
 
 ```lua
 local TM = loadstring(game:HttpGet(
@@ -242,7 +290,7 @@ TM:SetFolder("MyHubThemes")
 TM:BuildThemeSection(Settings)
 ```
 
-Use SaveManager when you want a second config section, with autoload:
+Use SaveManager when you want a second config section, with autoload. Pass a page, or the window: if the window already has **UI Settings**, the section is added there as **Script configs**. `LoadAutoloadConfig` is the same call as `LoadAutoload`, and autoload runs once. `IgnoreThemeSettings()` keeps the current colors out of these config files. Flags that start with `_` are not written into configs.
 
 ```lua
 local SM = loadstring(game:HttpGet(
