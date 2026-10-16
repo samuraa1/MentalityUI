@@ -28,6 +28,8 @@ local Library = loadstring(game:HttpGet(LIB_URL))()
 -- ───────────────────────────────────────────────────────────────────────────
 -- 2) Window — root container (sidebar + pages)
 --    Fields: Name, SubName, Logo (rbxasset id digits only), Size?, MobileScale?
+--    Default size is 940 x 860 on PC and 520 x 420 on mobile.
+--    A search box is pinned above the sidebar. No extra call is required.
 -- ───────────────────────────────────────────────────────────────────────────
 local Window = Library:Window({
     Name = "Example Hub",
@@ -44,6 +46,7 @@ local KeybindList = Library:KeybindList("Keybinds")
 Window:Category("Main")
 Window:TabDivider()
 
+-- Icon is a Lucide name. Other packs: "tabler:moon", "ph:house", "material:home".
 local MainPage = Window:Page({ Name = "Main", Icon = "gamepad-2" })
 local ExtraPage = Window:Page({ Name = "More", Icon = "layers" })
 
@@ -86,6 +89,7 @@ local Dash = Window:DashboardPage({
             end,
         },
     },
+    -- Drawn on the dashboard, above Quick Access.
     Credits = {
         { Name = "samet", Role = "Library" },
     },
@@ -158,6 +162,18 @@ Left:Dropdown({
     end,
 })
 
+-- Multi = true adds Select All and Select Nothing. Default is a list.
+Left:Dropdown({
+    Name = "Tags",
+    Flag = "ExTags",
+    Items = { "One", "Two", "Three", "Four" },
+    Default = { "One" },
+    Multi = true,
+    Callback = function(list)
+        print("Tags:", list)
+    end,
+})
+
 Left:Button({
     Name = "Ping notification",
     Icon = "bell",
@@ -167,6 +183,23 @@ Left:Button({
             Description = "This is Library:Notification",
             Duration = 3,
             Icon = "97594400820219",
+        })
+    end,
+})
+
+-- Force = true so the button always opens. Without Force, an unchanged body stays closed.
+Left:Button({
+    Name = "Changelogs",
+    Icon = "file-text",
+    Callback = function()
+        Library:Changelog({
+            Title = "Example Hub",
+            Text = [[Version: 1.0.0
++ Added the example page
+[!] Fixed the sample slider
+[?] Notes are saved under Samuraa1Hub/Changelogs
+]],
+            Force = true,
         })
     end,
 })
@@ -214,6 +247,7 @@ Right:Listbox({
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 6) Built-in settings page (accent, DPI, transparency, configs, …)
+--    Anonymous Mode is on this page. It hides the dashboard name and avatar.
 -- ───────────────────────────────────────────────────────────────────────────
 local SettingsPage = Library:CreateSettingsPage(Window, KeybindList)
 
@@ -225,6 +259,7 @@ local TM = loadstring(game:HttpGet(
 TM:SetLibrary(Library)
 TM:SetFolder("MyHubThemes")
 TM:BuildThemeSection(SettingsPage)
+TM:LoadDefault() -- same as the startup theme; skipped if the section already applied it
 ]]
 
 -- Example: SaveManager config UI (uncomment if you loaded SaveManager.lua)
@@ -234,7 +269,9 @@ local SM = loadstring(game:HttpGet(
 ))()
 SM:SetLibrary(Library)
 SM:SetFolder("MyHubConfigs")
-SM:BuildConfigSection(SettingsPage)
+SM:IgnoreThemeSettings() -- optional: these files do not store the theme
+SM:BuildConfigSection(SettingsPage) -- a page, or the window (lands on UI Settings)
+SM:LoadAutoloadConfig() -- alias of LoadAutoload; runs once
 ]]
 
 -- ───────────────────────────────────────────────────────────────────────────
