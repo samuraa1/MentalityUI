@@ -94,7 +94,7 @@ local Window = Library:Window({
 })
 ```
 
-A search box sits above the sidebar. It filters pages by name, and a matching category shows that whole group. Empty search shows everything again. There is no API for it.
+A search box sits above the sidebar. It matches tab names, toggles, buttons, sliders, labels, and text boxes. Section names, categories, keybinds, and dropdowns are skipped. A matching control keeps its tab and hides the other controls on that page. A matching tab still shows that whole tab. Empty search shows everything again. There is no API for it.
 
 | Call | What it does |
 |---|---|
