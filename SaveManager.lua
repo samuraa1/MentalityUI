@@ -1,6 +1,7 @@
 local SaveManager = {}
 SaveManager.__index = SaveManager
 
+local HttpService = game:GetService("HttpService")
 local Library
 
 local NOTIF_ICON = "97594400820219"
@@ -22,6 +23,52 @@ local function Notify(Title, Description)
             Icon = NOTIF_ICON,
         })
     end
+end
+
+local function StripTheme(Raw)
+    local DecodedOk, Decoded = pcall(function()
+        return HttpService:JSONDecode(Raw)
+    end)
+    if not DecodedOk or type(Decoded) ~= "table" then
+        return Raw
+    end
+    local Clean = {}
+    for Key, Value in Decoded do
+        if Key ~= "__theme" and Key ~= "__effect" and Key ~= "__themeName" then
+            Clean[Key] = Value
+        end
+    end
+    local EncodedOk, Encoded = pcall(function()
+        return HttpService:JSONEncode(Clean)
+    end)
+    if EncodedOk and type(Encoded) == "string" then
+        return Encoded
+    end
+    return Raw
+end
+
+-- A page, or a window. Hubs pass the window; the section then lands on UI Settings.
+local function PageFrom(Target)
+    if type(Target) ~= "table" then
+        return nil
+    end
+    if type(Target.Section) == "function" then
+        return Target
+    end
+    if type(Target.Pages) == "table" then
+        for _, Page in ipairs(Target.Pages) do
+            if type(Page) == "table" and type(Page.Section) == "function" then
+                local Name = tostring(Page.Name or "")
+                if Name == "UI Settings" or Name == "Settings" then
+                    return Page
+                end
+            end
+        end
+    end
+    if type(Target.Page) == "function" then
+        return Target:Page({ Name = "Configs", Icon = "folder" })
+    end
+    return nil
 end
 
 function SaveManager:SetLibrary(Lib)
@@ -97,6 +144,9 @@ function SaveManager:Save(Name)
     if type(Payload) ~= "string" then
         return false, "Could not encode config"
     end
+    if self.IgnoreTheme then
+        Payload = StripTheme(Payload)
+    end
     local Ok, Err = pcall(writefile, self:GetConfigPath(Name), Payload)
     if not Ok then
         return false, tostring(Err)
@@ -125,13 +175,16 @@ function SaveManager:Load(Name)
     if type(Raw) ~= "string" then
         return false, "Config not found: " .. Name
     end
+    if self.IgnoreTheme then
+        Raw = StripTheme(Raw)
+    end
     return Library:LoadConfig(Raw)
 end
 
 function SaveManager:Delete(Name)
     Name = CleanName(Name)
     if not Name then
-        return false
+        return false, "Invalid config name"
     end
     local Ok, Err = pcall(function()
         local Path = self:GetConfigPath(Name)
@@ -183,20 +236,49 @@ function SaveManager:SetAutoload(Name)
     return true
 end
 
+function SaveManager:IgnoreThemeSettings()
+    self.IgnoreTheme = true
+end
+
 function SaveManager:LoadAutoload()
+    if self._autoloadStarted then
+        return false
+    end
+    self._autoloadStarted = true
     local Name = self:GetAutoloadName()
     if not Name then
         return false
     end
-    return self:Load(Name)
+    local Ok, Err = self:Load(Name)
+    if Ok then
+        Notify("SaveManager", "Autoloaded \"" .. Name .. "\"")
+    else
+        Notify("SaveManager", tostring(Err))
+    end
+    return Ok, Err
 end
 
+SaveManager.LoadAutoloadConfig = SaveManager.LoadAutoload
+
 function SaveManager:BuildConfigSection(Tab)
-    if not Tab then
+    local Page = PageFrom(Tab)
+    if not Page then
         return
     end
 
-    local ConfigSection = Tab:Section({ Name = "Configs", Side = 2 })
+    local SectionName = "Configs"
+    local LayoutOrder = nil
+    if Page ~= Tab and tostring(Page.Name or "") == "UI Settings" then
+        SectionName = "Script configs"
+        LayoutOrder = 20
+    end
+
+    local ConfigSection = Page:Section({
+        Name = SectionName,
+        Side = 2,
+        Icon = "folder",
+        LayoutOrder = LayoutOrder,
+    })
     local ConfigName = ""
     local ConfigSelected = nil
 
@@ -304,9 +386,12 @@ function SaveManager:BuildConfigSection(Tab)
                 return
             end
             local Ok, Err = self:Delete(Name)
-            ConfigSelected = nil
-            Refresh()
             if Ok then
+                ConfigSelected = nil
+                if Library and Library.Flags then
+                    Library.Flags._SaveManagerList = nil
+                end
+                Refresh()
                 Notify("SaveManager", "Deleted \"" .. Name .. "\"")
             else
                 Notify("SaveManager", tostring(Err))
@@ -339,16 +424,7 @@ function SaveManager:BuildConfigSection(Tab)
     })
 
     task.defer(function()
-        local Name = self:GetAutoloadName()
-        if not Name then
-            return
-        end
-        local Ok, Err = self:Load(Name)
-        if Ok then
-            Notify("SaveManager", "Autoloaded \"" .. Name .. "\"")
-        else
-            Notify("SaveManager", tostring(Err))
-        end
+        self:LoadAutoload()
     end)
 end
 
