@@ -101,6 +101,8 @@ local Library do
         KeybindRows = {},
         -- flag name -> { Update, ... }; keybind list status stays in sync with Toggle:Set
         KeybindFlagListeners = {},
+        Anonymous = false,
+        _anonBinds = {},
 
         UnnamedConnections = 0,
         UnnamedFlags = 0,
@@ -972,6 +974,21 @@ local Library do
                     ImageLabel.ImageRectSize = Vector2New(0, 0)
                 end
             end
+        end
+    end
+
+    Library.BindAnonymous = function(self, Callback)
+        if type(Callback) ~= "function" then
+            return
+        end
+        TableInsert(self._anonBinds, Callback)
+        pcall(Callback, self.Anonymous == true)
+    end
+
+    Library.SetAnonymous = function(self, Enabled)
+        self.Anonymous = Enabled and true or false
+        for _, Callback in self._anonBinds do
+            pcall(Callback, self.Anonymous)
         end
     end
 
@@ -4628,6 +4645,7 @@ local Library do
 
                 Pages = { },
                 Items = { },
+                SidebarRows = { },
                 IsOpen = false,
                 CurrentAlignment = "LeftTabs",
                 TabSwitchCooldownSec = 0.5,
@@ -4823,6 +4841,9 @@ local Library do
                 end)
 
                 Items["LeftTabs"]:Connect("InputBegan", function(Input)
+                    if Items["TabSearch"] and Library:IsMouseOverFrame(Items["TabSearch"]) then
+                        return
+                    end
                     if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                         Dragging = true
     
@@ -4992,11 +5013,247 @@ local Library do
                 Instances:Create("UIPadding", {
                     Parent = Items["LeftTabsScroll"].Instance,
                     Name = "\0",
-                    PaddingTop = UDimNew(0, 15),
-                    PaddingBottom = UDimNew(0, 15),
+                    PaddingTop = UDimNew(0, 8),
+                    PaddingBottom = UDimNew(0, 12),
                     PaddingRight = UDimNew(0, 12),
                     PaddingLeft = UDimNew(0, 12)
                 })
+
+                Items["LeftTabsScroll"].Instance.Position = UDim2New(0, 0, 0, 50)
+                Items["LeftTabsScroll"].Instance.Size = UDim2New(1, 0, 1, -54)
+
+                Items["TabSearch"] = Instances:Create("Frame", {
+                    Parent = Items["LeftTabs"].Instance,
+                    Name = "\0",
+                    BackgroundColor3 = FromRGB(27, 26, 29),
+                    BackgroundTransparency = 0.08,
+                    BorderSizePixel = 0,
+                    Position = UDim2New(0, 12, 0, 10),
+                    Size = UDim2New(1, -24, 0, 34),
+                    ZIndex = 6,
+                    Active = true,
+                })
+                Items["TabSearch"]:AddToTheme({BackgroundColor3 = "Element"})
+
+                Instances:Create("UICorner", {
+                    Parent = Items["TabSearch"].Instance,
+                    Name = "\0",
+                    CornerRadius = UDimNew(0, 8),
+                })
+
+                local searchStroke = Instances:Create("UIStroke", {
+                    Parent = Items["TabSearch"].Instance,
+                    Name = "\0",
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    Thickness = 1,
+                    Transparency = 0.55,
+                    Color = FromRGB(38, 36, 46),
+                })
+                searchStroke:AddToTheme({Color = "Outline"})
+
+                local searchIcon = Instances:Create("ImageLabel", {
+                    Parent = Items["TabSearch"].Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AnchorPoint = Vector2New(0, 0.5),
+                    Position = UDim2New(0, 10, 0.5, 0),
+                    Size = UDim2New(0, 14, 0, 14),
+                    ImageColor3 = FromRGB(255, 255, 255),
+                    ZIndex = 7,
+                    Active = false,
+                })
+                Library:SetIcon(searchIcon.Instance, "search")
+                Instances:Create("UIGradient", {
+                    Parent = searchIcon.Instance,
+                    Name = "\0",
+                    Rotation = -115,
+                }):AddToTheme({Color = function()
+                    return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
+                end})
+
+                local searchBox = Instances:Create("TextBox", {
+                    Parent = Items["TabSearch"].Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Position = UDim2New(0, 30, 0, 0),
+                    Size = UDim2New(1, -58, 1, 0),
+                    FontFace = Library.Fonts.Light,
+                    PlaceholderText = "Search",
+                    PlaceholderColor3 = FromRGB(120, 118, 130),
+                    Text = "",
+                    TextColor3 = FromRGB(240, 240, 240),
+                    TextSize = 13,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ClearTextOnFocus = false,
+                    ZIndex = 7,
+                })
+                searchBox:AddToTheme({TextColor3 = "Text"})
+
+                local searchClear = Instances:Create("TextButton", {
+                    Parent = Items["TabSearch"].Instance,
+                    Name = "\0",
+                    AutoButtonColor = false,
+                    Text = "",
+                    Visible = false,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AnchorPoint = Vector2New(1, 0.5),
+                    Position = UDim2New(1, -4, 0.5, 0),
+                    Size = UDim2New(0, 22, 0, 22),
+                    ZIndex = 8,
+                })
+                local clearIcon = Instances:Create("ImageLabel", {
+                    Parent = searchClear.Instance,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AnchorPoint = Vector2New(0.5, 0.5),
+                    Position = UDim2New(0.5, 0, 0.5, 0),
+                    Size = UDim2New(0, 12, 0, 12),
+                    ImageColor3 = FromRGB(180, 178, 190),
+                    ZIndex = 9,
+                    Active = false,
+                })
+                Library:SetIcon(clearIcon.Instance, "x")
+
+                Items["TabSearchEmpty"] = Instances:Create("TextLabel", {
+                    Parent = Items["LeftTabsScroll"].Instance,
+                    Name = "\0",
+                    Visible = false,
+                    LayoutOrder = -1000,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2New(1, 0, 0, 28),
+                    FontFace = Library.Fonts.Light,
+                    Text = "No tabs",
+                    TextColor3 = FromRGB(120, 118, 140),
+                    TextSize = 13,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 3,
+                })
+
+                local function paintSearch(focused)
+                    TweenService:Create(searchStroke.Instance, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        Transparency = focused and 0.15 or 0.55,
+                        Color = focused and Library.Theme.Accent or Library.Theme.Outline,
+                    }):Play()
+                end
+
+                local function setSidebarRow(row, on)
+                    local inst = row.Instance
+                    if not inst or row.Shown == on then
+                        return
+                    end
+                    row.Shown = on
+                    local info = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+                    local goal = UDim2New(row.XScale, row.XOffset, 0, on and row.RestY or 0)
+                    if on then
+                        inst.Visible = true
+                    end
+                    local tween = TweenService:Create(inst, info, { Size = goal })
+                    tween:Play()
+                    if not on then
+                        tween.Completed:Connect(function()
+                            if row.Shown == false and inst.Parent then
+                                inst.Visible = false
+                            end
+                        end)
+                    end
+                end
+
+                function Window:TrackSidebar(inst, kind, label)
+                    if not inst then
+                        return
+                    end
+                    inst.ClipsDescendants = true
+                    local sz = inst.Size
+                    TableInsert(self.SidebarRows, {
+                        Instance = inst,
+                        Kind = kind,
+                        Label = StringLower(tostring(label or "")),
+                        RestY = sz.Y.Offset,
+                        XScale = sz.X.Scale,
+                        XOffset = sz.X.Offset,
+                        Shown = true,
+                    })
+                end
+
+                function Window:FilterSidebar(query)
+                    query = StringLower(tostring(query or ""))
+                    local rows = self.SidebarRows
+                    local count = #rows
+                    if query == "" then
+                        for _, row in rows do
+                            setSidebarRow(row, true)
+                        end
+                        Items["TabSearchEmpty"].Instance.Visible = false
+                        return
+                    end
+
+                    local visible = {}
+                    for index, row in rows do
+                        if row.Kind == "page" and StringFind(row.Label, query, 1, true) then
+                            visible[index] = true
+                        end
+                    end
+
+                    for index, row in rows do
+                        if row.Kind == "category" and StringFind(row.Label, query, 1, true) then
+                            visible[index] = true
+                            for ahead = index + 1, count do
+                                if rows[ahead].Kind == "category" then
+                                    break
+                                end
+                                visible[ahead] = true
+                            end
+                        end
+                    end
+
+                    for index, row in rows do
+                        if row.Kind == "page" and visible[index] then
+                            for back = index - 1, 1, -1 do
+                                local kind = rows[back].Kind
+                                if kind == "category" then
+                                    visible[back] = true
+                                    break
+                                elseif kind == "divider" then
+                                    visible[back] = true
+                                end
+                            end
+                        end
+                    end
+
+                    local any = false
+                    for index, row in rows do
+                        local show = visible[index] == true
+                        if show then
+                            any = true
+                        end
+                        setSidebarRow(row, show)
+                    end
+                    Items["TabSearchEmpty"].Instance.Visible = not any
+                    Items["LeftTabsScroll"].Instance.CanvasPosition = Vector2New(0, 0)
+                end
+
+                searchBox:Connect("Focused", function()
+                    paintSearch(true)
+                end)
+                searchBox:Connect("FocusLost", function()
+                    paintSearch(false)
+                end)
+                Library:Connect(searchBox.Instance:GetPropertyChangedSignal("Text"), function()
+                    local text = searchBox.Instance.Text or ""
+                    searchClear.Instance.Visible = text ~= ""
+                    Window:FilterSidebar(text)
+                end)
+                searchClear:Connect("MouseButton1Down", function()
+                    searchBox.Instance.Text = ""
+                    pcall(function()
+                        searchBox.Instance:CaptureFocus()
+                    end)
+                end)
 
                 Items["Logo"] = Instances:Create("ImageLabel", {
                     Parent = Items["MainFrame"].Instance,
@@ -5500,12 +5757,13 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  Items["Category"]:AddToTheme({TextColor3 = "Text"})
+                self:TrackSidebar(Items["Category"].Instance, "category", Name)
             end                
         end
 
         Library.TabDivider = function(self)
             local Win = self
-            Instances:Create("Frame", {
+            local divider = Instances:Create("Frame", {
                 Parent = Win.Items["LeftTabsScroll"].Instance,
                 Name = "\0",
                 BackgroundColor3 = FromRGB(38, 36, 46),
@@ -5513,7 +5771,9 @@ local Library do
                 BorderSizePixel = 0,
                 BackgroundTransparency = 0.42,
                 ZIndex = 2
-            }):AddToTheme({BackgroundColor3 = "Element"})
+            })
+            divider:AddToTheme({BackgroundColor3 = "Element"})
+            Win:TrackSidebar(divider.Instance, "divider", "")
         end
 
         Library.Page = function(self, Data)
@@ -5550,6 +5810,7 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(124, 163, 255)
                 })  Items["Inactive"]:AddToTheme({BackgroundColor3 = "Accent"})
+                Page.Window:TrackSidebar(Items["Inactive"].Instance, "page", Page.Name)
                 
                 Instances:Create("UICorner", {
                     Parent = Items["Inactive"].Instance,
@@ -5840,6 +6101,7 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(124, 163, 255)
                 })  DashItems["Inactive"]:AddToTheme({BackgroundColor3 = "Accent"})
+                Window:TrackSidebar(DashItems["Inactive"].Instance, "page", DashPage.Name)
 
                 Instances:Create("UICorner", {
                     Parent = DashItems["Inactive"].Instance,
@@ -6260,12 +6522,39 @@ local Library do
                     CornerRadius = UDimNew(1, 0)
                 })
 
+                DashItems["AnonIcon"] = Instances:Create("ImageLabel", {
+                    Parent = DashItems["AvatarRing"].Instance,
+                    Name = "\0",
+                    Visible = false,
+                    AnchorPoint = Vector2New(0.5, 0.5),
+                    Position = UDim2New(0.5, 0, 0.5, 0),
+                    Size = UDim2New(0, 28, 0, 28),
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    ImageColor3 = FromRGB(255, 255, 255),
+                    ZIndex = 4,
+                    BackgroundColor3 = FromRGB(255, 255, 255)
+                })
+                Library:SetIcon(DashItems["AnonIcon"].Instance, "hat-glasses")
+                Instances:Create("UIGradient", {
+                    Parent = DashItems["AnonIcon"].Instance,
+                    Name = "\0",
+                    Rotation = -115
+                }):AddToTheme({Color = function()
+                    return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
+                end})
+
+                local shownName = LocalPlayer.DisplayName
+                if shownName == "" then
+                    shownName = LocalPlayer.Name
+                end
+
                 DashItems["PlayerName"] = Instances:Create("TextLabel", {
                     Parent = RightCol.Instance,
                     Name = "\0",
                     FontFace = Library.Font,
                     TextColor3 = FromRGB(225, 223, 240),
-                    Text = LocalPlayer.DisplayName,
+                    Text = shownName,
                     AutomaticSize = Enum.AutomaticSize.X,
                     Size = UDim2New(0, 0, 0, 18),
                     BackgroundTransparency = 1,
@@ -6277,6 +6566,12 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  DashItems["PlayerName"]:AddToTheme({TextColor3 = "Text"})
+
+                Library:BindAnonymous(function(Enabled)
+                    DashItems["Avatar"].Instance.Visible = not Enabled
+                    DashItems["AnonIcon"].Instance.Visible = Enabled
+                    DashItems["PlayerName"].Instance.Text = Enabled and "Anonymous" or shownName
+                end)
 
                 DashItems["Badge"] = Instances:Create("TextLabel", {
                     Parent = RightCol.Instance,
@@ -11104,6 +11399,16 @@ Library.Sections.StatCard = function(self, Data)
             })
 
             UISection:Toggle({
+                Name = "Anonymous Mode",
+                Flag = "AnonymousMode",
+                Default = false,
+                Tooltip = "Hides your name and avatar. Shows an incognito icon instead.",
+                Callback = function(v)
+                    Library:SetAnonymous(v)
+                end
+            })
+
+            UISection:Toggle({
                 Name = "Custom Cursor",
                 Flag = "CustomCursorEnabled",
                 Default = false,
@@ -11125,6 +11430,7 @@ Library.Sections.StatCard = function(self, Data)
 
             task.defer(function()
                 pcall(function()
+                    Library:SetAnonymous(Library.Flags.AnonymousMode == true)
                     if Library.Flags.CustomCursorEnabled then
                         Library:SetCustomCursor(true)
                     end
