@@ -290,7 +290,7 @@ TM:SetFolder("MyHubThemes")
 TM:BuildThemeSection(Settings)
 ```
 
-Use SaveManager when you want a second config section, with autoload. Pass a page, or the window: if the window already has **UI Settings**, the section is added there as **Script configs**. `LoadAutoloadConfig` is the same call as `LoadAutoload`, and autoload runs once. `IgnoreThemeSettings()` keeps the current colors out of these config files. Flags that start with `_` are not written into configs.
+Use SaveManager when you want a config section with autoload. If the page already has **Configs** from the settings page, this does not add a second one. `LoadAutoloadConfig` is the same call as `LoadAutoload`, and autoload runs once. `IgnoreThemeSettings()` keeps the current colors out of these config files. Flags that start with `_` are not written into configs.
 
 ```lua
 local SM = loadstring(game:HttpGet(
