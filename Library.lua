@@ -6973,6 +6973,18 @@ local Library do
                     end
 
                     qaLabelY = 224 + #DashPage.Credits * 20 + 12
+                    DashItems["Sep2"] = Instances:Create("Frame", {
+                        Parent = DashItems["Page"].Instance,
+                        Name = "\0",
+                        BackgroundColor3 = FromRGB(38, 36, 46),
+                        Position = UDim2New(0, 0, 0, qaLabelY),
+                        Size = UDim2New(0.59, -12, 0, 1),
+                        BorderSizePixel = 0,
+                        ZIndex = 2,
+                        BackgroundTransparency = 0
+                    })
+                    DashItems["Sep2"]:AddToTheme({BackgroundColor3 = "Element"})
+                    qaLabelY = qaLabelY + 14
                 end
 
                 DashItems["QASep"] = Instances:Create("TextLabel", {
@@ -11373,8 +11385,34 @@ Library.Sections.StatCard = function(self, Data)
             local Accent = Data.Accent or FromRGB(126, 196, 184)
             local Items = {}
 
+            local column = self.Page and self.Page.ColumnsData and self.Page.ColumnsData[self.Side or 1]
+            local columnInst = column and column.Instance
+            if columnInst and not self._statHolder then
+                local order = 0
+                if self.Items.Section and self.Items.Section.Instance then
+                    order = self.Items.Section.Instance.LayoutOrder
+                end
+                self._statHolder = Instances:Create("Frame", {
+                    Parent = columnInst,
+                    Name = "\0",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2New(1, 0, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    LayoutOrder = order,
+                    ZIndex = 2,
+                    BackgroundColor3 = FromRGB(255, 255, 255),
+                })
+                Instances:Create("UIListLayout", {
+                    Parent = self._statHolder.Instance,
+                    Name = "\0",
+                    Padding = UDimNew(0, 8),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                })
+            end
+
             Items["Card"] = Instances:Create("Frame", {
-                Parent = self.Items["Content"].Instance,
+                Parent = (self._statHolder and self._statHolder.Instance) or self.Items["Content"].Instance,
                 Name = "\0",
                 BackgroundColor3 = FromRGB(16, 18, 24),
                 BorderSizePixel = 0,
@@ -11488,6 +11526,7 @@ Library.Sections.StatCard = function(self, Data)
             local Card = {
                 Section = self,
                 Items = Items,
+                IsStatCard = true,
             }
 
             function Card:Set(Value)
@@ -11498,7 +11537,20 @@ Library.Sections.StatCard = function(self, Data)
                 Items["Card"].Instance.Visible = Bool and true or false
             end
 
+            function Card:RefreshPosition()
+            end
+
             self.Elements[#self.Elements + 1] = Card
+            local onlyCards = true
+            for _, element in self.Elements do
+                if not element.IsStatCard then
+                    onlyCards = false
+                    break
+                end
+            end
+            if onlyCards and self.Items.Section and self.Items.Section.Instance then
+                self.Items.Section.Instance.Visible = false
+            end
             Library:MarkSearch(Card, Items["Card"].Instance, (Data.Name or "") .. " " .. (Data.Hint or ""))
             return Card
         end
