@@ -29,7 +29,9 @@ local Library = loadstring(game:HttpGet(LIB_URL))()
 -- 2) Window — root container (sidebar + pages)
 --    Fields: Name, SubName, Logo (rbxasset id digits only), Size?, MobileScale?
 --    Default size is 940 x 860 on PC and 520 x 420 on mobile.
---    A search box is pinned above the sidebar. No extra call is required.
+--    A search box is pinned above the sidebar. It matches tabs, toggles,
+--    buttons, and sliders. Sections, categories, keybinds, and dropdowns
+--    are skipped. No extra call is required.
 -- ───────────────────────────────────────────────────────────────────────────
 local Window = Library:Window({
     Name = "Example Hub",
