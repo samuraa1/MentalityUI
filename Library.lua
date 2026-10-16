@@ -852,18 +852,68 @@ local Library do
         Library.Font = Light
     end
 
-    -- Icon resolution: supports rbxassetid numbers, named Lucide icons
+    -- Icons via Molto (https://molto.pages.dev/). Plain names use Lucide.
+    -- Other packs: "tabler:moon", "ph:house", "material:home", "solar:bolt".
     do
-        local FetchedIcons, IconModule = pcall(function()
-            return loadstring(
-                game:HttpGet("https://raw.githubusercontent.com/samuraa1/MentalityUI/refs/heads/main/Lucide-Icons.lua")
-            )()
+        local IconModule
+        pcall(function()
+            IconModule = loadstring(game:HttpGet("https://molto.pages.dev/source.lua"))()
         end)
+        if type(IconModule) ~= "table" or type(IconModule.GetAsset) ~= "function" then
+            IconModule = nil
+        end
 
-        Library.GetIcon = function(self, IconName)
-            if not FetchedIcons or not IconModule then return nil end
-            local ok, icon = pcall(IconModule.GetAsset, IconName)
-            if ok and icon then return icon end
+        local ProviderIds = {
+            lucide = "lucide",
+            tabler = "tabler",
+            heroicons = "heroicons",
+            ph = "phosphor",
+            phosphor = "phosphor",
+            fluent = "fluent",
+            ["fluent-ui"] = "fluent",
+            fluentui = "fluent",
+            solar = "solar",
+            material = "material",
+            ["material-symbols"] = "material",
+            materialsymbols = "material",
+        }
+
+        local function SplitIcon(Spec)
+            local colon = StringFind(Spec, ":", 1, true)
+            local slash = StringFind(Spec, "/", 1, true)
+            local sep = colon
+            if slash and (not sep or slash < sep) then
+                sep = slash
+            end
+            if not sep or sep <= 1 then
+                return Spec, "lucide"
+            end
+            local left = StringLower(string.sub(Spec, 1, sep - 1))
+            local id = ProviderIds[left]
+            if not id then
+                return Spec, "lucide"
+            end
+            local name = string.sub(Spec, sep + 1)
+            if name == "" then
+                return Spec, "lucide"
+            end
+            return name, id
+        end
+
+        Library.GetIcon = function(self, IconName, Provider)
+            if not IconModule or type(IconName) ~= "string" or IconName == "" then
+                return nil
+            end
+            local name, provider = IconName, Provider
+            if type(provider) ~= "string" or provider == "" then
+                name, provider = SplitIcon(IconName)
+            else
+                provider = ProviderIds[StringLower(provider)] or provider
+            end
+            local ok, icon = pcall(IconModule.GetAsset, name, provider)
+            if ok and type(icon) == "table" and icon.Url then
+                return icon
+            end
             return nil
         end
 
@@ -884,15 +934,16 @@ local Library do
                     return Icon, Vector2New(0, 0), Vector2New(0, 0)
                 end
 
-                local iconData = Library:GetIcon(Icon)
-                if not iconData then
-                    local stripped = Icon:gsub("%-2$", "")
-                    if stripped ~= Icon then
-                        iconData = Library:GetIcon(stripped)
+                local name, provider = SplitIcon(Icon)
+                local iconData = Library:GetIcon(name, provider)
+                if not iconData and provider == "lucide" then
+                    local stripped = StringGSub(name, "%-2$", "")
+                    if stripped ~= name then
+                        iconData = Library:GetIcon(stripped, provider)
                     end
-                end
-                if not iconData and Icon:find("bar%-chart") then
-                    iconData = Library:GetIcon("bar-chart")
+                    if not iconData and StringFind(name, "bar-chart", 1, true) then
+                        iconData = Library:GetIcon("bar-chart", provider)
+                    end
                 end
                 if iconData then
                     return iconData.Url, iconData.ImageRectOffset or Vector2New(0, 0), iconData.ImageRectSize or Vector2New(0, 0)
@@ -3054,7 +3105,9 @@ local Library do
             end)
         end
 
-        -- In-UI changelog sheet. Replaces standalone changelog windows.
+        -- In-UI changelog sheet, centered on the Mentality window.
+        -- Same text is saved in Samuraa1Hub/Changelogs and skipped next time.
+        -- Force = true (or Always) opens again. Remember = false never saves.
         -- Library:Changelog({ Title = "...", Text = "...", Buttons = { { Name = "Discord", Clipboard = "https://discord.gg/..." } } })
         Library.Changelog = function(self, Data)
             if self ~= Library then
@@ -3064,13 +3117,6 @@ local Library do
                 Data = { Text = Data }
             end
             Data = Data or {}
-
-            local previous = Library._changelog
-            if previous and type(previous.Destroy) == "function" then
-                previous._silent = true
-                Library._changelog = nil
-                pcall(previous.Destroy)
-            end
 
             if not Library.Holder or not Library.Holder.Instance then
                 return nil
@@ -3083,11 +3129,8 @@ local Library do
             local shellThemed = {}
             local rowThemed = {}
             local rowRefs = {}
-            local dragWatch = nil
-            local userMoved = false
 
             local Z_BACK = 100300
-            local Z_SHADOW = 100305
             local Z_MODAL = 100310
             local Z_UI = 100330
             local Z_BTN = 100360
@@ -3404,6 +3447,52 @@ local Library do
             local titleText = tostring(Data.Title or Data.Name or "Changelogs")
             local iconName = Data.Icon or "file-text"
 
+            local function changelogBody()
+                if type(Data.Entries) == "table" and #Data.Entries > 0 then
+                    local lines = {}
+                    for _, entry in entries do
+                        TableInsert(lines, tostring(entry.kind) .. "\t" .. tostring(entry.text))
+                    end
+                    return TableConcat(lines, "\n")
+                end
+                return trim(tostring(Data.Text or Data.ChangelogText or Data.Body or Data.Content or ""))
+            end
+
+            local function seenFile()
+                local folder = Library.Folders.Directory .. "/Changelogs"
+                local safe = titleText:gsub("[^%w%._%-]+", "_")
+                safe = safe:gsub("^_+", ""):gsub("_+$", "")
+                if safe == "" then
+                    safe = "Changelog"
+                end
+                if #safe > 64 then
+                    safe = safe:sub(1, 64)
+                end
+                return folder, folder .. "/" .. safe .. ".txt"
+            end
+
+            local body = changelogBody()
+            local remember = Data.Force ~= true and Data.Always ~= true and Data.Remember ~= false
+            if remember then
+                local alreadySeen = false
+                pcall(function()
+                    local _, path = seenFile()
+                    if isfile(path) and readfile(path) == body then
+                        alreadySeen = true
+                    end
+                end)
+                if alreadySeen then
+                    return nil
+                end
+            end
+
+            local previous = Library._changelog
+            if previous and type(previous.Destroy) == "function" then
+                previous._silent = true
+                Library._changelog = nil
+                pcall(previous.Destroy)
+            end
+
             local function collectButtons(source)
                 local list = {}
                 local function push(entry)
@@ -3457,8 +3546,13 @@ local Library do
 
             local buttons = collectButtons(Data)
 
+            local hostInst = Library.Holder.Instance
+            if Library.MainFrame and Library.MainFrame.Instance and Library.MainFrame.Instance.Parent then
+                hostInst = Library.MainFrame.Instance
+            end
+
             local layer = Instances:Create("Frame", {
-                Parent = Library.Holder.Instance,
+                Parent = hostInst,
                 Name = "\0",
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
@@ -3480,27 +3574,12 @@ local Library do
                 Active = true,
             })
 
-            local shadow = Instances:Create("Frame", {
-                Parent = layer.Instance,
-                Name = "\0",
-                AnchorPoint = Vector2New(0, 0),
-                BackgroundColor3 = FromRGB(0, 0, 0),
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                ZIndex = Z_SHADOW,
-                Active = false,
-            })
-            Instances:Create("UICorner", {
-                Parent = shadow.Instance,
-                CornerRadius = UDimNew(0, 20),
-            })
-
             local modal = Instances:Create("Frame", {
                 Parent = layer.Instance,
                 Name = "\0",
                 AnchorPoint = Vector2New(0.5, 0.5),
                 Position = UDim2New(0.5, 0, 0.5, 0),
-                Size = UDim2FromOffset(520, 620),
+                Size = UDim2New(0.9, 0, 0.88, 0),
                 BackgroundColor3 = Library.Theme.Background,
                 BorderSizePixel = 0,
                 ClipsDescendants = true,
@@ -3555,16 +3634,14 @@ local Library do
                 Active = false,
             })
 
-            local dragBtn = Instances:Create("TextButton", {
+            local dragBtn = Instances:Create("Frame", {
                 Parent = header.Instance,
                 Name = "\0",
-                AutoButtonColor = false,
-                Text = "",
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 Size = UDim2New(1, -(closeSize + 8), 1, 0),
                 ZIndex = Z_UI,
-                Active = true,
+                Active = false,
             })
 
             local badge = Instances:Create("Frame", {
@@ -3831,19 +3908,9 @@ local Library do
                 end)
                 searchBox:Connect("Focused", function()
                     paintSearch(true)
-                    if touchUi and not userMoved then
-                        TweenService:Create(modal.Instance, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                            Position = UDim2New(0.5, 0, 0.42, 0),
-                        }):Play()
-                    end
                 end)
                 searchBox:Connect("FocusLost", function()
                     paintSearch(false)
-                    if touchUi and not userMoved then
-                        TweenService:Create(modal.Instance, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                            Position = UDim2New(0.5, 0, 0.5, 0),
-                        }):Play()
-                    end
                 end)
             end
 
@@ -3972,22 +4039,49 @@ local Library do
                     ZIndex = Z_UI + 1,
                     Active = false,
                 })
+                local rowHost = frame.Instance
                 if tag then
+                    frame.Instance.ClipsDescendants = true
                     bindTheme(frame, { BackgroundColor3 = "Element" }, rowThemed)
                     Instances:Create("UICorner", {
                         Parent = frame.Instance,
-                        CornerRadius = UDimNew(0, 8),
+                        CornerRadius = UDimNew(0, 10),
                     })
-                    local rim = Instances:Create("UIStroke", {
+                    local cardStroke = Instances:Create("UIStroke", {
                         Parent = frame.Instance,
                         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
                         Thickness = 1,
-                        Transparency = 0.5,
-                        Color = tag.Color or Library.Theme.Accent,
+                        Transparency = 0.78,
+                        Color = Library.Theme.Outline,
+                    })
+                    bindTheme(cardStroke, { Color = "Outline" }, rowThemed)
+
+                    local accent = tag.Color or Library.Theme.Accent
+                    local bar = Instances:Create("Frame", {
+                        Parent = frame.Instance,
+                        Name = "\0",
+                        BorderSizePixel = 0,
+                        Position = UDim2New(0, 0, 0, 0),
+                        Size = UDim2New(0, 3, 1, 0),
+                        BackgroundColor3 = accent,
+                        ZIndex = Z_UI + 3,
+                        Active = false,
                     })
                     if tag.Theme then
-                        bindTheme(rim, { Color = "Accent" }, rowThemed)
+                        bindTheme(bar, { BackgroundColor3 = "Accent" }, rowThemed)
                     end
+
+                    rowHost = Instances:Create("Frame", {
+                        Parent = frame.Instance,
+                        Name = "\0",
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                        Position = UDim2New(0, 12, 0, 0),
+                        Size = UDim2New(1, -18, 0, 0),
+                        AutomaticSize = Enum.AutomaticSize.Y,
+                        ZIndex = Z_UI + 2,
+                        Active = false,
+                    }).Instance
                 end
                 local topPad = 2
                 if kind == "version" and order > 1 then
@@ -3995,50 +4089,60 @@ local Library do
                 elseif kind == "section" then
                     topPad = 8
                 elseif tag then
-                    topPad = 8
+                    topPad = 9
                 end
                 Instances:Create("UIPadding", {
-                    Parent = frame.Instance,
+                    Parent = rowHost,
                     PaddingTop = UDimNew(0, topPad),
-                    PaddingBottom = UDimNew(0, tag and 8 or 2),
-                    PaddingLeft = UDimNew(0, tag and 10 or (kind == "bullet" and 8 or 2)),
-                    PaddingRight = UDimNew(0, tag and 10 or 4),
+                    PaddingBottom = UDimNew(0, tag and 9 or 2),
+                    PaddingLeft = UDimNew(0, tag and 2 or (kind == "bullet" and 8 or 2)),
+                    PaddingRight = UDimNew(0, tag and 8 or 4),
                 })
                 Instances:Create("UIListLayout", {
-                    Parent = frame.Instance,
+                    Parent = rowHost,
                     FillDirection = Enum.FillDirection.Vertical,
                     SortOrder = Enum.SortOrder.LayoutOrder,
-                    Padding = UDimNew(0, tag and 6 or 0),
+                    Padding = UDimNew(0, tag and 5 or 0),
                 })
 
                 if tag then
+                    local accent = tag.Color or Library.Theme.Accent
                     local chip = Instances:Create("TextLabel", {
-                        Parent = frame.Instance,
+                        Parent = rowHost,
                         Name = "\0",
-                        BackgroundColor3 = tag.Color or Library.Theme.Accent,
-                        BackgroundTransparency = 0.82,
+                        BackgroundColor3 = accent,
+                        BackgroundTransparency = 0.86,
                         BorderSizePixel = 0,
                         AutomaticSize = Enum.AutomaticSize.X,
-                        Size = UDim2New(0, 0, 0, 18),
+                        Size = UDim2New(0, 0, 0, 16),
                         FontFace = Library.Fonts.Bold,
                         Text = tag.Label,
-                        TextSize = 11,
-                        TextColor3 = tag.Color or Library.Theme.Accent,
-                        ZIndex = Z_UI + 2,
+                        TextSize = 10,
+                        TextColor3 = accent,
+                        TextXAlignment = Enum.TextXAlignment.Center,
+                        ZIndex = Z_UI + 3,
                         LayoutOrder = 1,
                         Active = false,
                     })
                     Instances:Create("UICorner", {
                         Parent = chip.Instance,
-                        CornerRadius = UDimNew(0, 6),
+                        CornerRadius = UDimNew(1, 0),
                     })
                     Instances:Create("UIPadding", {
                         Parent = chip.Instance,
-                        PaddingLeft = UDimNew(0, 7),
-                        PaddingRight = UDimNew(0, 7),
+                        PaddingLeft = UDimNew(0, 8),
+                        PaddingRight = UDimNew(0, 8),
+                    })
+                    local chipStroke = Instances:Create("UIStroke", {
+                        Parent = chip.Instance,
+                        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                        Thickness = 1,
+                        Transparency = 0.35,
+                        Color = accent,
                     })
                     if tag.Theme then
                         bindTheme(chip, { TextColor3 = "Accent", BackgroundColor3 = "Accent" }, rowThemed)
+                        bindTheme(chipStroke, { Color = "Accent" }, rowThemed)
                     end
                 end
 
@@ -4047,7 +4151,7 @@ local Library do
                     shown = "•  " .. shown
                 end
                 local label = Instances:Create("TextLabel", {
-                    Parent = frame.Instance,
+                    Parent = rowHost,
                     Name = "\0",
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
@@ -4162,82 +4266,11 @@ local Library do
                 end)
             end
 
-            local function fitSize()
-                if cleaned or not Library.Holder or not Library.Holder.Instance then
-                    return
-                end
-                local sz = Library.Holder.Instance.AbsoluteSize
-                if sz.X < 40 or sz.Y < 40 then
-                    return
-                end
-                local w, h
-                if touchUi or sz.X < 760 then
-                    w = MathClamp(sz.X - 16, 240, 560)
-                    h = MathClamp(sz.Y - 16, 280, 740)
-                else
-                    w = MathClamp(MathFloor(sz.X * 0.38), 480, 560)
-                    h = MathClamp(MathFloor(sz.Y * 0.74), 520, 700)
-                end
-                w = math.min(w, MathMax(200, sz.X - 10))
-                h = math.min(h, MathMax(220, sz.Y - 10))
-                modal.Instance.Size = UDim2FromOffset(MathFloor(w), MathFloor(h))
-                if not userMoved then
-                    modal.Instance.AnchorPoint = Vector2New(0.5, 0.5)
-                    modal.Instance.Position = UDim2New(0.5, 0, 0.5, 0)
-                else
-                    task.defer(function()
-                        if not cleaned then
-                            api.Clamp()
-                        end
-                    end)
-                end
-            end
-
-            local function followShadow()
-                if cleaned or not shadow.Instance or not modal.Instance or not layer.Instance then
-                    return
-                end
-                local ms = modal.Instance.AbsoluteSize
-                if ms.X < 2 or ms.Y < 2 then
-                    return
-                end
-                shadow.Instance.Size = UDim2FromOffset(ms.X + 22, ms.Y + 22)
-                local ap = modal.Instance.AbsolutePosition
-                local pap = layer.Instance.AbsolutePosition
-                shadow.Instance.Position = UDim2FromOffset(ap.X - pap.X - 11, ap.Y - pap.Y - 7)
-            end
-
-            function api.Clamp()
-                if cleaned then
-                    return
-                end
-                local parent = layer.Instance
-                local psz = parent.AbsoluteSize
-                local ms = modal.Instance.AbsoluteSize
-                if psz.X < 1 or ms.X < 1 then
-                    return
-                end
-                local pos = modal.Instance.Position
-                local anchor = modal.Instance.AnchorPoint
-                local left = pos.X.Scale * psz.X + pos.X.Offset - anchor.X * ms.X
-                local top = pos.Y.Scale * psz.Y + pos.Y.Offset - anchor.Y * ms.Y
-                local nx = MathClamp(left, 0, MathMax(0, psz.X - ms.X))
-                local ny = MathClamp(top, 0, MathMax(0, psz.Y - ms.Y))
-                modal.Instance.Position = UDim2FromOffset(nx + anchor.X * ms.X, ny + anchor.Y * ms.Y)
-                followShadow()
-            end
-
             local function cleanup()
                 if cleaned then
                     return
                 end
                 cleaned = true
-                if dragWatch then
-                    pcall(function()
-                        dragWatch:Disconnect()
-                    end)
-                    dragWatch = nil
-                end
                 for _, conn in conns do
                     pcall(function()
                         conn:Disconnect()
@@ -4260,7 +4293,6 @@ local Library do
                 pcall(function()
                     TweenService:Create(scale, info, { Scale = 0.97 }):Play()
                     TweenService:Create(backdrop.Instance, info, { BackgroundTransparency = 1 }):Play()
-                    TweenService:Create(shadow.Instance, info, { BackgroundTransparency = 1 }):Play()
                 end)
                 task.delay(0.17, function()
                     local spec = Data.Notification
@@ -4483,67 +4515,12 @@ local Library do
             bindPress(xBtn, hide)
             bindPress(backdrop, hide)
 
-            local armed = false
-            local dragging = false
-            local dragStart = nil
-            local startPos = nil
-            listen(dragBtn.Instance.InputBegan, function(input)
-                if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
-                    return
-                end
-                armed = true
-                dragging = false
-                dragStart = input.Position
-                startPos = modal.Instance.Position
-                if dragWatch then
-                    pcall(function()
-                        dragWatch:Disconnect()
-                    end)
-                end
-                dragWatch = input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        armed = false
-                        dragging = false
-                        if dragWatch then
-                            dragWatch:Disconnect()
-                            dragWatch = nil
-                        end
-                    end
-                end)
-                TableInsert(conns, dragWatch)
-            end)
-            listen(UserInputService.InputChanged, function(input)
-                if not armed or not dragStart or not startPos then
-                    return
-                end
-                if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
-                    return
-                end
-                local delta = input.Position - dragStart
-                if not dragging then
-                    if math.abs(delta.X) < 8 and math.abs(delta.Y) < 8 then
-                        return
-                    end
-                    dragging = true
-                    userMoved = true
-                end
-                modal.Instance.Position = UDim2New(
-                    startPos.X.Scale,
-                    startPos.X.Offset + delta.X,
-                    startPos.Y.Scale,
-                    startPos.Y.Offset + delta.Y
-                )
-                api.Clamp()
-            end)
             listen(UserInputService.InputBegan, function(input)
                 if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB then
                     hide()
                 end
             end)
             listen(layer.Instance.Destroying, cleanup)
-            listen(modal.Instance:GetPropertyChangedSignal("AbsolutePosition"), followShadow)
-            listen(modal.Instance:GetPropertyChangedSignal("AbsoluteSize"), followShadow)
-            listen(Library.Holder.Instance:GetPropertyChangedSignal("AbsoluteSize"), fitSize)
 
             function api.Hide()
                 hide()
@@ -4587,27 +4564,28 @@ local Library do
             end
 
             render(entries)
-            fitSize()
-            followShadow()
             lift(xBtn.Instance, Z_BTN)
             if clearBtn then
                 lift(clearBtn.Instance, Z_UI + 5)
+            end
+
+            if Data.Remember ~= false then
+                pcall(function()
+                    local folder, path = seenFile()
+                    if not isfolder(Library.Folders.Directory) then
+                        makefolder(Library.Folders.Directory)
+                    end
+                    if not isfolder(folder) then
+                        makefolder(folder)
+                    end
+                    writefile(path, body)
+                end)
             end
 
             TweenService:Create(scale, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Scale = 1 }):Play()
             TweenService:Create(backdrop.Instance, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundTransparency = 0.46,
             }):Play()
-            TweenService:Create(shadow.Instance, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 0.55,
-            }):Play()
-            task.defer(function()
-                if cleaned then
-                    return
-                end
-                fitSize()
-                followShadow()
-            end)
 
             Library._changelog = api
             return api
@@ -4667,7 +4645,7 @@ local Library do
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
                     Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
-                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 940, 0, 720)),
+                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 1180, 0, 720)),
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
@@ -4810,12 +4788,12 @@ local Library do
                     AutomaticCanvasSize = Enum.AutomaticSize.Y,
                     ScrollingDirection = Enum.ScrollingDirection.Y,
                     ScrollBarThickness = 5,
-                    ScrollBarImageColor3 = FromRGB(90, 165, 255),
+                    ScrollBarImageColor3 = Library.Theme.Accent,
                     ScrollingEnabled = true,
                     Active = true,
                     ClipsDescendants = true,
                     ZIndex = 3,
-                })
+                })  Items["LeftTabsScroll"]:AddToTheme({ScrollBarImageColor3 = "Accent"})
 
                 -- Blur on LeftTabs caused a dark seam at the bottom-left; main panel blur is enough.
                 local Gui = Items["MainFrame"].Instance
@@ -8434,8 +8412,8 @@ local Library do
                     BorderColor3 = FromRGB(0, 0, 0),
                     ZIndex = 2,
                     BorderSizePixel = 0,
-                    BackgroundColor3 = FromRGB(255, 255, 255)
-                })  --Items["Accent"]:AddToTheme({BackgroundColor3 = "Accent"})
+                    BackgroundColor3 = Library.Theme.Accent
+                })  Items["Accent"]:AddToTheme({BackgroundColor3 = "Accent"})
 
                 Instances:Create("UICorner", {
                     Parent = Items["Accent"].Instance,
@@ -8449,21 +8427,20 @@ local Library do
                     Size = UDim2New(0, 16, 0, 12),
                     AnchorPoint = Vector2New(0.5, 0.5),
                     Image = "rbxassetid://117786983271442",
+                    ImageColor3 = Library.Theme.Accent,
                     BackgroundTransparency = 1,
                     Position = UDim2New(1, 5, 0.5, 0),
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     BackgroundColor3 = FromRGB(255, 255, 255)
-                })
+                })  Items["Icon"]:AddToTheme({ImageColor3 = "Accent"})
 
                 Instances:Create("UIGradient", {
                     Parent = Items["Accent"].Instance,
                     Name = "\0",
                     Rotation = -102,
-                    Color = RGBSequence{RGBSequenceKeypoint(0, FromRGB(255, 255, 255)), RGBSequenceKeypoint(1, FromRGB(166, 166, 166))}
-                }):AddToTheme({Color = function()
-                    return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
-                end})
+                    Color = RGBSequence{RGBSequenceKeypoint(0, FromRGB(255, 255, 255)), RGBSequenceKeypoint(1, FromRGB(170, 170, 170))}
+                })
 
                 Items["Plus"] = Instances:Create("TextButton", {
                     Parent = Items["RealSlider"].Instance,
@@ -8865,6 +8842,63 @@ local Library do
                     Items["Holder"].Instance.Position = UDim2New(0, 8, 0, 40)
                     Items["Holder"].Instance.Size = UDim2New(1, -16, 1, -48)
                 end
+
+                if Dropdown.Multi then
+                    local bulkH = IsMobile and 30 or 24
+                    local bulkY = Dropdown.SearchEnabled and 40 or 6
+                    Items["Bulk"] = Instances:Create("Frame", {
+                        Parent = Items["OptionHolder"].Instance,
+                        Name = "\0",
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                        Position = UDim2New(0, 8, 0, bulkY),
+                        Size = UDim2New(1, -16, 0, bulkH),
+                        ZIndex = 3,
+                        Active = false,
+                    })
+
+                    local function bulkButton(label, anchor, position)
+                        local btn = Instances:Create("TextButton", {
+                            Parent = Items["Bulk"].Instance,
+                            Name = "\0",
+                            AutoButtonColor = false,
+                            Text = label,
+                            FontFace = Library.Font,
+                            TextSize = IsMobile and 13 or 11,
+                            TextColor3 = FromRGB(240, 240, 240),
+                            TextTransparency = 0.12,
+                            TextTruncate = Enum.TextTruncate.AtEnd,
+                            BackgroundColor3 = FromRGB(27, 26, 29),
+                            BorderSizePixel = 0,
+                            AnchorPoint = anchor,
+                            Position = position,
+                            Size = UDim2New(0.5, -3, 1, 0),
+                            ZIndex = 3,
+                        })
+                        btn:AddToTheme({BackgroundColor3 = "Element", TextColor3 = "Text"})
+                        Instances:Create("UICorner", {
+                            Parent = btn.Instance,
+                            Name = "\0",
+                            CornerRadius = UDimNew(0, 4),
+                        })
+                        Instances:Create("UIStroke", {
+                            Parent = btn.Instance,
+                            Name = "\0",
+                            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                            Thickness = 1,
+                            Transparency = 0.4,
+                            Color = FromRGB(35, 33, 38),
+                        }):AddToTheme({Color = "Outline"})
+                        return btn
+                    end
+
+                    Items["SelectAll"] = bulkButton("Select All", Vector2New(0, 0), UDim2New(0, 0, 0, 0))
+                    Items["SelectNone"] = bulkButton("Select Nothing", Vector2New(1, 0), UDim2New(1, 0, 0, 0))
+
+                    local holderY = bulkY + bulkH + 4
+                    Items["Holder"].Instance.Position = UDim2New(0, 8, 0, holderY)
+                    Items["Holder"].Instance.Size = UDim2New(1, -16, 1, -(holderY + 8))
+                end
             end
 
             --ropdown.Section.Items["Fade"].Instance.Size = UDim2New(1, 0, 0, Dropdown.Section.Items["Content"].Instance.AbsoluteSize.X - 180)
@@ -8936,9 +8970,14 @@ local Library do
                     end)
                     
                     local searchPad = Dropdown.SearchEnabled and 32 or 0
+                    local bulkPad = Dropdown.Multi and ((IsMobile and 30 or 24) + 4) or 0
                     RenderStepped = RunService.RenderStepped:Connect(function()
+                        local popupW = Items["RealDropdown"].Instance.AbsoluteSize.X
+                        if Dropdown.Multi then
+                            popupW = math.max(popupW, IsMobile and 250 or 220)
+                        end
                         Items["OptionHolder"].Instance.Position = UDim2New(0, Items["RealDropdown"].Instance.AbsolutePosition.X, 0, Items["RealDropdown"].Instance.AbsolutePosition.Y + Items["RealDropdown"].Instance.AbsoluteSize.Y + 5)
-                        Items["OptionHolder"].Instance.Size = UDim2New(0, Items["RealDropdown"].Instance.AbsoluteSize.X, 0, Dropdown.OptionHolderSize + searchPad)
+                        Items["OptionHolder"].Instance.Size = UDim2New(0, popupW, 0, Dropdown.OptionHolderSize + searchPad + bulkPad)
                     end)
 
                     for Index, Value in Library.OpenFrames do 
@@ -9042,7 +9081,7 @@ local Library do
                             TableInsert(Labels, Value)
                         end
                     end
-                    Items["Value"].Instance.Text = TableConcat(Labels, ", ")
+                    Items["Value"].Instance.Text = #Labels > 0 and TableConcat(Labels, ", ") or "..."
                 else
                     if not Dropdown.Options[Option] then
                         return
@@ -9278,6 +9317,19 @@ local Library do
             Items["RealDropdown"]:Connect("MouseButton1Down", function()
                 Dropdown:SetOpen(not Dropdown.IsOpen)
             end)
+
+            if Items["SelectAll"] then
+                Items["SelectAll"]:Connect("MouseButton1Down", function()
+                    local names = {}
+                    for _, opt in Dropdown.OptionsWithIndexes do
+                        TableInsert(names, opt.Name)
+                    end
+                    Dropdown:Set(names)
+                end)
+                Items["SelectNone"]:Connect("MouseButton1Down", function()
+                    Dropdown:Set({})
+                end)
+            end
 
             Library:Connect(UserInputService.InputBegan, function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
