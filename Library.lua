@@ -4635,6 +4635,33 @@ local Library do
             return Library:Changelog(Data)
         end
 
+        Library.MarkSearch = function(_, element, instance, label, extra)
+            if not element or not instance then
+                return
+            end
+            local parts = { tostring(label or "") }
+            if type(extra) == "table" then
+                for _, item in extra do
+                    if type(item) == "string" then
+                        TableInsert(parts, item)
+                    elseif type(item) == "table" then
+                        local name = item.Name or item.name or item.Text
+                        if name then
+                            TableInsert(parts, tostring(name))
+                        end
+                    end
+                end
+            end
+            element._searchInst = instance
+            element._searchIgnore = extra == false
+            element._searchLabel = element._searchIgnore and "" or StringLower(TableConcat(parts, " "))
+            local section = element.Section
+            if type(section) == "table" then
+                section._searchAll = section._searchAll or {}
+                TableInsert(section._searchAll, element)
+            end
+        end
+
         Library.Window = function(self, Data)
             Data = Data or { }
 
@@ -5127,7 +5154,7 @@ local Library do
                     BorderSizePixel = 0,
                     Size = UDim2New(1, 0, 0, 28),
                     FontFace = Library.Fonts.Light,
-                    Text = "No tabs",
+                    Text = "Nothing found",
                     TextColor3 = FromRGB(120, 118, 140),
                     TextSize = 13,
                     TextXAlignment = Enum.TextXAlignment.Left,
@@ -5163,7 +5190,30 @@ local Library do
                     end
                 end
 
-                function Window:TrackSidebar(inst, kind, label)
+                local searchPrev = {}
+
+                local function restoreSearched(inst)
+                    if not inst then
+                        return
+                    end
+                    local prev = searchPrev[inst]
+                    if prev ~= nil then
+                        inst.Visible = prev
+                        searchPrev[inst] = nil
+                    end
+                end
+
+                local function hideSearched(inst)
+                    if not inst then
+                        return
+                    end
+                    if searchPrev[inst] == nil then
+                        searchPrev[inst] = inst.Visible
+                    end
+                    inst.Visible = false
+                end
+
+                function Window:TrackSidebar(inst, kind, label, page)
                     if not inst then
                         return
                     end
@@ -5173,6 +5223,7 @@ local Library do
                         Instance = inst,
                         Kind = kind,
                         Label = StringLower(tostring(label or "")),
+                        Page = page,
                         RestY = sz.Y.Offset,
                         XScale = sz.X.Scale,
                         XOffset = sz.X.Offset,
@@ -5183,7 +5234,42 @@ local Library do
                 function Window:FilterSidebar(query)
                     query = StringLower(tostring(query or ""))
                     local rows = self.SidebarRows
-                    local count = #rows
+
+                    local function sectionFrame(section)
+                        local items = section and section.Items
+                        local frame = items and items.Section
+                        return frame and frame.Instance
+                    end
+
+                    local function restorePage(page)
+                        if not page then
+                            return
+                        end
+                        if page.Sections then
+                            for _, section in page.Sections do
+                                restoreSearched(sectionFrame(section))
+                                for _, element in section._searchAll or section.Elements or {} do
+                                    restoreSearched(element._searchInst)
+                                    local nested = element.Settings
+                                    if type(nested) == "table" then
+                                        for _, sub in nested._searchAll or nested.Elements or {} do
+                                            restoreSearched(sub._searchInst)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        if page._searchCards then
+                            for _, card in page._searchCards do
+                                restoreSearched(card.Instance)
+                            end
+                        end
+                    end
+
+                    for _, page in self.Pages or {} do
+                        restorePage(page)
+                    end
+
                     if query == "" then
                         for _, row in rows do
                             setSidebarRow(row, true)
@@ -5192,22 +5278,100 @@ local Library do
                         return
                     end
 
-                    local visible = {}
-                    for index, row in rows do
-                        if row.Kind == "page" and StringFind(row.Label, query, 1, true) then
-                            visible[index] = true
+                    local pageFull = {}
+                    local pageShow = {}
+                    local keep = {}
+
+                    for _, row in rows do
+                        if row.Kind == "page" and row.Page and StringFind(row.Label, query, 1, true) then
+                            pageFull[row.Page] = true
+                            pageShow[row.Page] = true
                         end
                     end
 
-                    for index, row in rows do
-                        if row.Kind == "category" and StringFind(row.Label, query, 1, true) then
-                            visible[index] = true
-                            for ahead = index + 1, count do
-                                if rows[ahead].Kind == "category" then
-                                    break
+                    local function note(page, section, element, parent)
+                        if not page or not element or element._searchIgnore then
+                            return
+                        end
+                        local label = element._searchLabel or ""
+                        local hit = pageFull[page] or (label ~= "" and StringFind(label, query, 1, true))
+                        if not hit then
+                            return
+                        end
+                        pageShow[page] = true
+                        if element._searchInst then
+                            keep[element._searchInst] = true
+                        end
+                        if parent and parent._searchInst and not parent._searchIgnore then
+                            keep[parent._searchInst] = true
+                        end
+                    end
+
+                    for _, page in self.Pages or {} do
+                        if page.Sections then
+                            for _, section in page.Sections do
+                                for _, element in section._searchAll or section.Elements or {} do
+                                    note(page, section, element, nil)
+                                    local nested = element.Settings
+                                    if type(nested) == "table" then
+                                        for _, sub in nested._searchAll or nested.Elements or {} do
+                                            note(page, section, sub, element)
+                                        end
+                                    end
                                 end
-                                visible[ahead] = true
                             end
+                        end
+                        if page._searchCards then
+                            for _, card in page._searchCards do
+                                if card.Label ~= "" and StringFind(card.Label, query, 1, true) then
+                                    pageShow[page] = true
+                                end
+                            end
+                        end
+                    end
+
+                    for _, page in self.Pages or {} do
+                        if pageFull[page] or not pageShow[page] or not page.Sections then
+                            continue
+                        end
+                        for _, section in page.Sections do
+                            local any = false
+                            for _, element in section._searchAll or section.Elements or {} do
+                                local inst = element._searchInst
+                                local show = inst and keep[inst]
+                                if inst then
+                                    if show then
+                                        any = true
+                                    else
+                                        hideSearched(inst)
+                                    end
+                                end
+                                local nested = element.Settings
+                                if type(nested) == "table" then
+                                    for _, sub in nested._searchAll or nested.Elements or {} do
+                                        if sub._searchInst and not keep[sub._searchInst] then
+                                            hideSearched(sub._searchInst)
+                                        end
+                                    end
+                                end
+                            end
+                            if not any then
+                                hideSearched(sectionFrame(section))
+                            end
+                        end
+                        if page.ColumnsData then
+                            for _, column in page.ColumnsData do
+                                if column.Instance then
+                                    column.Instance.CanvasPosition = Vector2New(0, 0)
+                                end
+                            end
+                        end
+                    end
+
+                    local visible = {}
+                    for index, row in rows do
+                        if row.Kind == "page" and row.Page and pageShow[row.Page] then
+                            visible[index] = true
                         end
                     end
 
@@ -5810,7 +5974,7 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(124, 163, 255)
                 })  Items["Inactive"]:AddToTheme({BackgroundColor3 = "Accent"})
-                Page.Window:TrackSidebar(Items["Inactive"].Instance, "page", Page.Name)
+                Page.Window:TrackSidebar(Items["Inactive"].Instance, "page", Page.Name, Page)
                 
                 Instances:Create("UICorner", {
                     Parent = Items["Inactive"].Instance,
@@ -6101,7 +6265,7 @@ local Library do
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(124, 163, 255)
                 })  DashItems["Inactive"]:AddToTheme({BackgroundColor3 = "Accent"})
-                Window:TrackSidebar(DashItems["Inactive"].Instance, "page", DashPage.Name)
+                Window:TrackSidebar(DashItems["Inactive"].Instance, "page", DashPage.Name, DashPage)
 
                 Instances:Create("UICorner", {
                     Parent = DashItems["Inactive"].Instance,
@@ -6963,6 +7127,11 @@ local Library do
                     end)
 
                     DashItems["QACards"][Index] = card
+                    DashPage._searchCards = DashPage._searchCards or {}
+                    TableInsert(DashPage._searchCards, {
+                        Instance = card.Instance,
+                        Label = StringLower(tostring(CardData.Name or "") .. " " .. tostring(CardData.Description or "")),
+                    })
                 end
 
                 for i, CardData in DashPage.QuickAccess do
@@ -8456,6 +8625,10 @@ local Library do
 
             function Toggle:Colorpicker(Data)
                 Data = Data or { }
+                local pickerName = Data.Name or Data.name
+                if pickerName and Toggle._searchLabel then
+                    Toggle._searchLabel = Toggle._searchLabel .. " " .. StringLower(tostring(pickerName))
+                end
 
                 local Colorpicker = {
                     Window = Toggle.Window,
@@ -8528,6 +8701,11 @@ local Library do
                     syncFlag = Toggle.Flag,
                 })
 
+                if NewKeybind then
+                    NewKeybind.Section = Toggle.Section
+                    Library:MarkSearch(NewKeybind, NewKeybind._searchInst, nil, false)
+                end
+
                 return NewKeybind
             end
 
@@ -8562,6 +8740,7 @@ local Library do
             end
 
             Toggle.Section.Elements[#Toggle.Section.Elements+1] = Toggle
+            Library:MarkSearch(Toggle, Items["Toggle"].Instance, Toggle.Name)
 
             return Toggle 
         end
@@ -8712,6 +8891,8 @@ local Library do
             if Data.Tooltip or Data.tooltip then
                 Library:AttachTooltip(Items["Button"].Instance, Data.Tooltip or Data.tooltip)
             end
+
+            Library:MarkSearch(Button, Items["Button"].Instance, Button.Name)
 
             return Button
         end
@@ -9016,6 +9197,7 @@ local Library do
             end
 
             Slider.Section.Elements[#Slider.Section.Elements+1] = Slider
+            Library:MarkSearch(Slider, Items["Slider"].Instance, Slider.Name)
             return Slider 
         end
 
@@ -9781,6 +9963,7 @@ local Library do
             end
 
             Dropdown.Section.Elements[#Dropdown.Section.Elements+1] = Dropdown
+            Library:MarkSearch(Dropdown, Items["Dropdown"].Instance, nil, false)
             return Dropdown
         end
 
@@ -9858,6 +10041,10 @@ local Library do
 
             function Label:Colorpicker(Data)
                 Data = Data or { }
+                local pickerName = Data.Name or Data.name
+                if pickerName and Label._searchLabel then
+                    Label._searchLabel = Label._searchLabel .. " " .. StringLower(tostring(pickerName))
+                end
 
                 local Colorpicker = {
                     Window = Label.Window,
@@ -9921,6 +10108,7 @@ local Library do
             end
 
             Label.Section.Elements[#Label.Section.Elements+1] = Label
+            Library:MarkSearch(Label, Items["Label"].Instance, Label.Name)
             return Label
         end
 
@@ -10518,6 +10706,7 @@ local Library do
             Items["Label"].Instance.Visible = showRows ~= false
 
             Keybind.Section.Elements[#Keybind.Section.Elements+1] = Keybind
+            Library:MarkSearch(Keybind, Items["Label"].Instance, nil, false)
             return Keybind 
         end
 
@@ -10655,6 +10844,7 @@ local Library do
             end
 
             Textbox.Section.Elements[#Textbox.Section.Elements+1] = Textbox
+            Library:MarkSearch(Textbox, Items["Textbox"].Instance, Textbox.Placeholder)
             return Textbox
         end
 
@@ -11089,6 +11279,7 @@ local Library do
             end
 
             Dropdown.Section.Elements[#Dropdown.Section.Elements+1] = Dropdown
+            Library:MarkSearch(Dropdown, Items["Listbox"].Instance, "", Dropdown.Items)
             return Dropdown
         end
     end
@@ -11173,6 +11364,7 @@ local Library do
             end
 
             self.Elements[#self.Elements + 1] = Divider
+            Library:MarkSearch(Divider, Items["Container"].Instance, Label or "")
             return Divider
         end
 
@@ -11307,6 +11499,7 @@ Library.Sections.StatCard = function(self, Data)
             end
 
             self.Elements[#self.Elements + 1] = Card
+            Library:MarkSearch(Card, Items["Card"].Instance, (Data.Name or "") .. " " .. (Data.Hint or ""))
             return Card
         end
 
