@@ -4645,7 +4645,7 @@ local Library do
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
                     Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
-                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 1180, 0, 720)),
+                    Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 940, 0, 860)),
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     ClipsDescendants = true,
@@ -6425,6 +6425,97 @@ local Library do
                     BackgroundTransparency = 0
                 })  DashItems["Sep1"]:AddToTheme({BackgroundColor3 = "Element"})
 
+                local qaLabelY = 206
+                if #DashPage.Credits > 0 then
+                    Instances:Create("TextLabel", {
+                        Parent = DashItems["Page"].Instance,
+                        Name = "\0",
+                        FontFace = Library.Fonts.Light,
+                        TextColor3 = FromRGB(80, 78, 102),
+                        Text = "CREDITS",
+                        AutomaticSize = Enum.AutomaticSize.X,
+                        Size = UDim2New(0, 0, 0, 16),
+                        BackgroundTransparency = 1,
+                        Position = UDim2New(0, 0, 0, 206),
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        BorderSizePixel = 0,
+                        ZIndex = 2,
+                        TextSize = 11,
+                        BackgroundColor3 = FromRGB(255, 255, 255)
+                    })
+
+                    local creditsRow = Instances:Create("Frame", {
+                        Parent = DashItems["Page"].Instance,
+                        Name = "\0",
+                        BackgroundTransparency = 1,
+                        Position = UDim2New(0, 0, 0, 224),
+                        Size = UDim2New(1, 0, 0, #DashPage.Credits * 20),
+                        BorderSizePixel = 0,
+                        ZIndex = 2,
+                        BackgroundColor3 = FromRGB(255, 255, 255)
+                    })
+                    Instances:Create("UIListLayout", {
+                        Parent = creditsRow.Instance,
+                        Name = "\0",
+                        FillDirection = Enum.FillDirection.Vertical,
+                        Padding = UDimNew(0, 2),
+                        SortOrder = Enum.SortOrder.LayoutOrder,
+                    })
+
+                    for index, credit in DashPage.Credits do
+                        local row = Instances:Create("Frame", {
+                            Parent = creditsRow.Instance,
+                            Name = "\0",
+                            BackgroundTransparency = 1,
+                            Size = UDim2New(1, 0, 0, 18),
+                            BorderSizePixel = 0,
+                            LayoutOrder = index,
+                            ZIndex = 2,
+                            BackgroundColor3 = FromRGB(255, 255, 255)
+                        })
+                        Instances:Create("UIListLayout", {
+                            Parent = row.Instance,
+                            Name = "\0",
+                            FillDirection = Enum.FillDirection.Horizontal,
+                            VerticalAlignment = Enum.VerticalAlignment.Center,
+                            Padding = UDimNew(0, 8),
+                            SortOrder = Enum.SortOrder.LayoutOrder,
+                        })
+                        Instances:Create("TextLabel", {
+                            Parent = row.Instance,
+                            Name = "\0",
+                            FontFace = Library.Font,
+                            TextColor3 = FromRGB(225, 223, 240),
+                            Text = tostring(credit.Name or credit.name or ""),
+                            AutomaticSize = Enum.AutomaticSize.X,
+                            Size = UDim2New(0, 0, 1, 0),
+                            BackgroundTransparency = 1,
+                            BorderSizePixel = 0,
+                            LayoutOrder = 1,
+                            ZIndex = 2,
+                            TextSize = 13,
+                            BackgroundColor3 = FromRGB(255, 255, 255)
+                        }):AddToTheme({TextColor3 = "Text"})
+                        Instances:Create("TextLabel", {
+                            Parent = row.Instance,
+                            Name = "\0",
+                            FontFace = Library.Fonts.Light,
+                            TextColor3 = FromRGB(120, 118, 145),
+                            Text = tostring(credit.Role or credit.role or ""),
+                            AutomaticSize = Enum.AutomaticSize.X,
+                            Size = UDim2New(0, 0, 1, 0),
+                            BackgroundTransparency = 1,
+                            BorderSizePixel = 0,
+                            LayoutOrder = 2,
+                            ZIndex = 2,
+                            TextSize = 12,
+                            BackgroundColor3 = FromRGB(255, 255, 255)
+                        })
+                    end
+
+                    qaLabelY = 224 + #DashPage.Credits * 20 + 12
+                end
+
                 DashItems["QASep"] = Instances:Create("TextLabel", {
                     Parent = DashItems["Page"].Instance,
                     Name = "\0",
@@ -6434,7 +6525,7 @@ local Library do
                     AutomaticSize = Enum.AutomaticSize.X,
                     Size = UDim2New(0, 0, 0, 16),
                     BackgroundTransparency = 1,
-                    Position = UDim2New(0, 0, 0, 206),
+                    Position = UDim2New(0, 0, 0, qaLabelY),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     BorderSizePixel = 0,
                     ZIndex = 2,
@@ -6446,8 +6537,8 @@ local Library do
                     Parent = DashItems["Page"].Instance,
                     Name = "\0",
                     BackgroundTransparency = 1,
-                    Position = UDim2New(0, 0, 0, 228),
-                    Size = UDim2New(1, 0, 1, -228),
+                    Position = UDim2New(0, 0, 0, qaLabelY + 22),
+                    Size = UDim2New(1, 0, 1, -(qaLabelY + 22)),
                     BorderSizePixel = 0,
                     ZIndex = 2,
                     BackgroundColor3 = FromRGB(255, 255, 255)
