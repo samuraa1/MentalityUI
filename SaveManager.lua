@@ -47,7 +47,6 @@ local function StripTheme(Raw)
     return Raw
 end
 
--- A page, or a window. Hubs pass the window; the section then lands on UI Settings.
 local function PageFrom(Target)
     if type(Target) ~= "table" then
         return nil
@@ -265,19 +264,14 @@ function SaveManager:BuildConfigSection(Tab)
     if not Page then
         return
     end
-
-    local SectionName = "Configs"
-    local LayoutOrder = nil
-    if Page ~= Tab and tostring(Page.Name or "") == "UI Settings" then
-        SectionName = "Script configs"
-        LayoutOrder = 20
+    if type(Page.Sections) == "table" and Page.Sections.Configs then
+        return
     end
 
     local ConfigSection = Page:Section({
-        Name = SectionName,
+        Name = "Configs",
         Side = 2,
         Icon = "folder",
-        LayoutOrder = LayoutOrder,
     })
     local ConfigName = ""
     local ConfigSelected = nil
