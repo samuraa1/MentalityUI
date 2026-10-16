@@ -272,7 +272,7 @@ local SM = loadstring(game:HttpGet(
 SM:SetLibrary(Library)
 SM:SetFolder("MyHubConfigs")
 SM:IgnoreThemeSettings() -- optional: these files do not store the theme
-SM:BuildConfigSection(SettingsPage) -- a page, or the window (lands on UI Settings)
+SM:BuildConfigSection(SettingsPage) -- skipped when the page already has Configs
 SM:LoadAutoloadConfig() -- alias of LoadAutoload; runs once
 ]]
 
