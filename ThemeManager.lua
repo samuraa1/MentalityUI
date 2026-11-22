@@ -6,19 +6,20 @@ local Library
 
 local NOTIF_ICON = "97594400820219"
 
-local HALLOWEEN = {
+-- Fallback palette for older versions of the library.
+local NEW_YEAR = {
     Full = true,
-    Effect = "Halloween",
-    ["Background"] = Color3.fromRGB(22, 12, 8),
-    ["Background 2"] = Color3.fromRGB(14, 8, 5),
-    ["Text"] = Color3.fromRGB(255, 236, 220),
-    ["Outline"] = Color3.fromRGB(78, 40, 18),
-    ["Section Top"] = Color3.fromRGB(62, 30, 12),
-    ["Section Background"] = Color3.fromRGB(28, 14, 8),
-    ["Section Background 2"] = Color3.fromRGB(38, 18, 10),
-    ["Accent"] = Color3.fromRGB(255, 132, 36),
-    ["AccentGradient"] = Color3.fromRGB(186, 62, 14),
-    ["Element"] = Color3.fromRGB(46, 24, 12),
+    Effect = "Winter",
+    ["Background"] = Color3.fromRGB(10, 22, 38),
+    ["Background 2"] = Color3.fromRGB(8, 16, 29),
+    ["Text"] = Color3.fromRGB(232, 247, 255),
+    ["Outline"] = Color3.fromRGB(47, 82, 111),
+    ["Section Top"] = Color3.fromRGB(25, 52, 74),
+    ["Section Background"] = Color3.fromRGB(13, 30, 50),
+    ["Section Background 2"] = Color3.fromRGB(20, 42, 63),
+    ["Accent"] = Color3.fromRGB(124, 219, 255),
+    ["AccentGradient"] = Color3.fromRGB(238, 193, 103),
+    ["Element"] = Color3.fromRGB(28, 50, 73),
 }
 
 local function CleanName(Name)
@@ -52,8 +53,9 @@ end
 
 function ThemeManager:SetLibrary(Lib)
     Library = Lib
-    if Library and type(Library.Palettes) == "table" and Library.Palettes.Halloween == nil then
-        Library.Palettes.Halloween = HALLOWEEN
+    if Library and type(Library.Palettes) == "table" then
+        Library.Palettes.Halloween = nil
+        Library.Palettes["New Year"] = Library.Palettes["New Year"] or NEW_YEAR
     end
 end
 
@@ -74,8 +76,8 @@ function ThemeManager:Builtin(Name)
     if Library and Library.Palettes and Library.Palettes[Name] then
         return Library.Palettes[Name]
     end
-    if Name == "Halloween" then
-        return HALLOWEEN
+    if Name == "New Year" then
+        return NEW_YEAR
     end
     return nil
 end
@@ -109,23 +111,10 @@ function ThemeManager:GetDefaultThemeName()
     return CleanName(Raw)
 end
 
-local function SeasonalDefaultName()
-    local Now = os.date("*t")
-    if type(Now) ~= "table" then
-        return nil
-    end
-    local Month, Day = tonumber(Now.month), tonumber(Now.day)
-    if not Month or not Day then
-        return nil
-    end
-    if Month == 10 or (Month == 11 and Day <= 15) then
-        return "Halloween"
-    end
-    return nil
-end
-
 function ThemeManager:GetStartupThemeName()
-    return self:GetDefaultThemeName() or SeasonalDefaultName()
+    local name = self:GetDefaultThemeName()
+    if name == "Halloween" then name = nil end
+    return name or "New Year"
 end
 
 function ThemeManager:ApplySavedDefault()
@@ -155,7 +144,7 @@ function ThemeManager:ListThemes()
     local Map = {}
     local Source = Library and Library.Palettes
     if type(Source) ~= "table" then
-        Source = { Halloween = HALLOWEEN }
+        Source = { ["New Year"] = NEW_YEAR }
     end
     for Name in Source do
         Map[Name] = true
@@ -171,7 +160,7 @@ function ThemeManager:ListThemes()
     if Ok and Files then
         for _, File in ipairs(Files) do
             local Name = File:match("([^/\\]+)%.json$")
-            if Name and Name ~= "default_theme" then
+            if Name and Name ~= "default_theme" and Name ~= "Halloween" then
                 Map[Name] = true
             end
         end
@@ -226,6 +215,7 @@ function ThemeManager:LoadTheme(Name)
         return false, "Empty name"
     end
 
+    -- A saved file with the same name as a preset wins, so "Save current" can override Orange.
     local Path = self:GetThemePath(Name)
     local Ok, Raw = pcall(function()
         if type(isfile) ~= "function" or not isfile(Path) then
@@ -292,7 +282,7 @@ function ThemeManager:BuildThemeSection(Tab)
     end
 
     local ThemeSection = Tab:Section({ Name = "Themes", Side = 2, LayoutOrder = -300, Icon = "palette" })
-    ThemeSection:Label("Presets and saved themes. Halloween recolors the whole window.")
+    ThemeSection:Label("Presets and saved themes. New Year adds snowfall and a winter palette.")
 
     local SelectedTheme = nil
     local Themes = self:ListThemes()
