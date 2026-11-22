@@ -3,6 +3,7 @@
 -- https://discord.gg/VhvTd5HV8d
 -- @joestar._3
 
+local getgenv = type(getgenv) == "function" and getgenv or function() return _G end
 local Library do 
     local Workspace = game:GetService("Workspace")
     local UserInputService = game:GetService("UserInputService")
@@ -212,7 +213,7 @@ local Library do
     Library._themeName = "Default"
     Library._themeFull = false
     Library._themeEffect = nil
-    Library._halloween = { on = false, flakes = {} }
+    Library._winter = { on = false, flakes = {} }
 
     local function AccentPalette(r, g, b, r2, g2, b2)
         return {
@@ -260,19 +261,19 @@ local Library do
         Wine = AccentPalette(160, 50, 80, 90, 20, 40),
         Aqua = AccentPalette(70, 230, 220, 30, 150, 170),
         Grape = AccentPalette(150, 80, 200, 90, 40, 140),
-        Halloween = {
+        ["New Year"] = {
             Full = true,
-            Effect = "Halloween",
-            ["Background"] = FromRGB(22, 12, 8),
-            ["Background 2"] = FromRGB(14, 8, 5),
-            ["Text"] = FromRGB(255, 236, 220),
-            ["Outline"] = FromRGB(78, 40, 18),
-            ["Section Top"] = FromRGB(62, 30, 12),
-            ["Section Background"] = FromRGB(28, 14, 8),
-            ["Section Background 2"] = FromRGB(38, 18, 10),
-            ["Accent"] = FromRGB(255, 132, 36),
-            ["AccentGradient"] = FromRGB(186, 62, 14),
-            ["Element"] = FromRGB(46, 24, 12),
+            Effect = "Winter",
+            ["Background"] = FromRGB(10, 22, 38),
+            ["Background 2"] = FromRGB(8, 16, 29),
+            ["Text"] = FromRGB(232, 247, 255),
+            ["Outline"] = FromRGB(47, 82, 111),
+            ["Section Top"] = FromRGB(25, 52, 74),
+            ["Section Background"] = FromRGB(13, 30, 50),
+            ["Section Background 2"] = FromRGB(20, 42, 63),
+            ["Accent"] = FromRGB(124, 219, 255),
+            ["AccentGradient"] = FromRGB(238, 193, 103),
+            ["Element"] = FromRGB(28, 50, 73),
         },
     }
 
@@ -1035,13 +1036,25 @@ local Library do
         PaddingLeft = UDimNew(0, 12)
     })    
 
+    Library._unloadCallbacks = {}
+    Library.OnUnload = function(self, callback)
+        if type(callback) == "function" and not self._unloaded then
+            table.insert(self._unloadCallbacks, callback)
+        end
+    end
+
     Library.Unload = function(self)
+        if self._unloaded then return end
+        self._unloaded = true
+        for i = #self._unloadCallbacks, 1, -1 do pcall(self._unloadCallbacks[i]) end
+        table.clear(self._unloadCallbacks)
+        if self.SetWinter then pcall(self.SetWinter, self, false) end
         for Index, Value in self.Connections do 
-            Value.Connection:Disconnect()
+            pcall(Value.Connection.Disconnect, Value.Connection)
         end
 
         for Index, Value in self.Threads do 
-            coroutine.close(Value)
+            pcall(coroutine.close, Value)
         end
 
         pcall(function() UserInputService.MouseIconEnabled = true end)
@@ -1056,17 +1069,10 @@ local Library do
             table.clear(Library.BlurInstances)
         end
 
-        for _, inst in ipairs(Lighting:GetChildren()) do
-            if inst:IsA("DepthOfFieldEffect") then
-                pcall(function() inst:Destroy() end)
-            elseif inst:IsA("BlurEffect") then
-                pcall(function() inst:Destroy() end)
-            end
-        end
-
         if self.Holder then 
             self.Holder:Clean()
         end
+        if self.UnusedHolder then self.UnusedHolder:Clean() end
 
         if Library.CursorScreenGui then pcall(function() Library.CursorScreenGui:Destroy() end) end
         if Library.CursorGui then pcall(function() Library.CursorGui:Destroy() end) end
@@ -1404,201 +1410,70 @@ local Library do
         end
     end
 
-    local HalloweenIcons = {
-        { Icon = "ghost", Color = FromRGB(255, 244, 230) },
-        { Icon = "skull", Color = FromRGB(236, 236, 242) },
-        { Icon = "candy", Color = FromRGB(255, 140, 60) },
-        { Icon = "candy-cane", Color = FromRGB(255, 96, 96) },
-        { Icon = "flame", Color = FromRGB(255, 170, 50) },
-        { Icon = "moon-star", Color = FromRGB(255, 214, 130) },
-        { Icon = "bone", Color = FromRGB(235, 224, 206) },
-        { Icon = "sparkles", Color = FromRGB(255, 196, 80) },
-        { Icon = "lollipop", Color = FromRGB(255, 110, 170) },
-    }
-
-    local function Passive(Object)
-        Object.Active = false
-        pcall(function()
-            Object.Interactable = false
-        end)
-    end
-
-    local function MakePumpkin(Parent, Size, ZIndex)
-        local Root = InstanceNew("Frame")
-        Root.Name = "Pumpkin"
-        Root.BackgroundTransparency = 1
-        Root.BorderSizePixel = 0
-        Root.AnchorPoint = Vector2New(0, 0)
-        Root.Size = UDim2FromOffset(Size, Size)
-        Root.ZIndex = ZIndex
-        Passive(Root)
-        Root.Parent = Parent
-
-        local Body = InstanceNew("Frame")
-        Body.BackgroundColor3 = FromRGB(255, math.random(112, 148), math.random(18, 42))
-        Body.BackgroundTransparency = 0.8
-        Body.BorderSizePixel = 0
-        Body.AnchorPoint = Vector2New(0.5, 1)
-        Body.Position = UDim2New(0.5, 0, 1, 0)
-        Body.Size = UDim2New(0.86, 0, 0.72, 0)
-        Body.ZIndex = ZIndex
-        Passive(Body)
-        Body.Parent = Root
-        local BodyCorner = InstanceNew("UICorner")
-        BodyCorner.CornerRadius = UDimNew(1, 0)
-        BodyCorner.Parent = Body
-
-        local Ridge = InstanceNew("Frame")
-        Ridge.BackgroundColor3 = FromRGB(196, 78, 14)
-        Ridge.BackgroundTransparency = 0.8
-        Ridge.BorderSizePixel = 0
-        Ridge.AnchorPoint = Vector2New(0.5, 0.5)
-        Ridge.Position = UDim2New(0.5, 0, 0.55, 0)
-        Ridge.Size = UDim2New(0.14, 0, 0.8, 0)
-        Ridge.ZIndex = ZIndex + 1
-        Passive(Ridge)
-        Ridge.Parent = Body
-        local RidgeCorner = InstanceNew("UICorner")
-        RidgeCorner.CornerRadius = UDimNew(1, 0)
-        RidgeCorner.Parent = Ridge
-
-        local Stem = InstanceNew("Frame")
-        Stem.BackgroundColor3 = FromRGB(48, 132, 46)
-        Stem.BackgroundTransparency = 0.8
-        Stem.BorderSizePixel = 0
-        Stem.AnchorPoint = Vector2New(0.5, 1)
-        Stem.Position = UDim2New(0.52, 0, 0.36, 0)
-        Stem.Size = UDim2New(0.16, 0, 0.3, 0)
-        Stem.Rotation = -16
-        Stem.ZIndex = ZIndex
-        Passive(Stem)
-        Stem.Parent = Root
-        local StemCorner = InstanceNew("UICorner")
-        StemCorner.CornerRadius = UDimNew(0, 3)
-        StemCorner.Parent = Stem
-
-        return Root
-    end
-
-    Library.SetHalloween = function(self, Enabled)
-        local State = self._halloween
-        Enabled = Enabled and true or false
-
-        local function Stop()
-            State.on = false
-            if State.conn then
-                State.conn:Disconnect()
-                State.conn = nil
-            end
-            if State.layer then
-                State.layer:Destroy()
-                State.layer = nil
-            end
-            State.flakes = {}
-        end
-
-        if not Enabled then
-            Stop()
+    Library.SetWinter = function(self, enabled)
+        local state = self._winter
+        if not enabled then
+            state.on = false
+            if state.conn then state.conn:Disconnect(); state.conn = nil end
+            if state.layer then state.layer:Destroy(); state.layer = nil end
+            table.clear(state.flakes)
             return
         end
 
-        local Main = self.MainFrame and self.MainFrame.Instance
-        if not Main then
-            State.on = true
-            return
-        end
-        if State.on and State.layer and State.layer.Parent == Main and State.conn then
-            return
-        end
-        Stop()
-        State.on = true
+        local main = self.MainFrame and self.MainFrame.Instance
+        if not main then state.on = true; return end
+        if state.layer and state.layer.Parent == main and state.conn then return end
+        self:SetWinter(false)
+        state.on = true
 
-        local Layer = InstanceNew("Frame")
-        Layer.Name = "HalloweenFall"
-        Layer.BackgroundTransparency = 1
-        Layer.BorderSizePixel = 0
-        Layer.Size = UDim2New(1, 0, 1, 0)
-        Layer.ZIndex = 30
-        Passive(Layer)
-        Layer.ClipsDescendants = true
-        Layer.Parent = Main
-        State.layer = Layer
-        State.flakes = {}
+        local layer = InstanceNew("Frame")
+        layer.Name = "WinterSnow"
+        layer.Size = UDim2New(1, 0, 1, 0)
+        layer.BackgroundTransparency = 1
+        layer.ClipsDescendants = true
+        layer.Active = false
+        layer.Interactable = false
+        layer.ZIndex = 30
+        layer.Parent = main
+        state.layer = layer
 
-        local SpawnWait = 0
-        State.conn = RunService.Heartbeat:Connect(function(dt)
-            if not State.on or not Layer.Parent then
-                if State.conn then
-                    State.conn:Disconnect()
-                    State.conn = nil
-                end
-                State.on = false
-                return
-            end
-            if not Layer.Parent.Visible then
-                return
-            end
+        local spawnIn = 0
+        local symbols = { "❄", "❅", "·" }
+        state.conn = RunService.Heartbeat:Connect(function(dt)
+            if not layer.Parent then self:SetWinter(false); return end
+            if not main.Visible then return end
+            local width, height = layer.AbsoluteSize.X, layer.AbsoluteSize.Y
+            if width < 8 or height < 8 then return end
 
-            local Width = Layer.AbsoluteSize.X
-            local Height = Layer.AbsoluteSize.Y
-            if Width < 8 or Height < 8 then
-                return
-            end
-
-            SpawnWait += dt
-            if SpawnWait >= 0.4 and #State.flakes < 16 then
-                SpawnWait = 0
-                local Size = math.random(14, 26)
-                local Flake
-                if math.random() < 0.62 or not self.SetIcon then
-                    Flake = MakePumpkin(Layer, Size, 31)
-                else
-                    local Pick = HalloweenIcons[math.random(1, #HalloweenIcons)]
-                    local Image = InstanceNew("ImageLabel")
-                    Image.BackgroundTransparency = 1
-                    Image.BorderSizePixel = 0
-                    Image.Size = UDim2FromOffset(Size, Size)
-                    Image.ImageColor3 = Pick.Color
-                    Image.ImageTransparency = 0.8
-                    Image.ZIndex = 31
-                    Passive(Image)
-                    Image.ScaleType = Enum.ScaleType.Fit
-                    Image.Parent = Layer
-                    self:SetIcon(Image, Pick.Icon)
-                    if Image.Image == "" then
-                        Image:Destroy()
-                        Flake = MakePumpkin(Layer, Size, 31)
-                    else
-                        Flake = Image
-                    end
-                end
-
-                TableInsert(State.flakes, {
-                    obj = Flake,
-                    x = math.random(0, math.max(0, MathFloor(Width - Size))),
-                    y = -Size - math.random(0, 36),
-                    speed = math.random(34, 76),
-                    sway = math.random(12, 28) / 10,
-                    amp = math.random(8, 22),
-                    phase = math.random() * 6.28,
-                    rot = math.random(-24, 24),
+            spawnIn -= dt
+            if spawnIn <= 0 and #state.flakes < 14 then
+                spawnIn = 0.42
+                local flake = InstanceNew("TextLabel")
+                flake.Text = symbols[math.random(1, #symbols)]
+                flake.TextColor3 = FromRGB(215, 241, 255)
+                flake.TextTransparency = 0.57
+                flake.TextSize = math.random(12, 22)
+                flake.BackgroundTransparency = 1
+                flake.Size = UDim2FromOffset(24, 24)
+                flake.Active = false
+                flake.Interactable = false
+                flake.ZIndex = 31
+                flake.Parent = layer
+                table.insert(state.flakes, {
+                    object = flake, x = math.random(0, math.max(0, math.floor(width - 24))),
+                    y = -24, speed = math.random(22, 46), phase = math.random() * 6.28,
                 })
             end
 
-            for Index = #State.flakes, 1, -1 do
-                local Flake = State.flakes[Index]
-                local Obj = Flake.obj
-                if not Obj or not Obj.Parent then
-                    TableRemove(State.flakes, Index)
-                else
-                    Flake.y += Flake.speed * dt
-                    Flake.phase += dt * Flake.sway
-                    Obj.Position = UDim2FromOffset(Flake.x + MathSin(Flake.phase) * Flake.amp, Flake.y)
-                    Obj.Rotation = Flake.rot + MathSin(Flake.phase * 0.8) * 16
-                    if Flake.y > Height + 30 then
-                        Obj:Destroy()
-                        TableRemove(State.flakes, Index)
-                    end
+            for i = #state.flakes, 1, -1 do
+                local flake = state.flakes[i]
+                flake.y += flake.speed * dt
+                flake.phase += dt
+                flake.object.Position = UDim2FromOffset(flake.x + MathSin(flake.phase) * 10, flake.y)
+                flake.object.Rotation = MathSin(flake.phase) * 20
+                if flake.y > height + 24 then
+                    flake.object:Destroy()
+                    table.remove(state.flakes, i)
                 end
             end
         end)
@@ -1629,7 +1504,7 @@ local Library do
         if type(Name) == "string" and Name ~= "" then
             self._themeName = Name
         end
-        self:SetHalloween(Palette.Effect == "Halloween")
+        self:SetWinter(Palette.Effect == "Winter")
 
         self._suppressThemeUi = true
         pcall(function()
@@ -5673,8 +5548,8 @@ local Library do
                 end)
                 
                 Window.Items = Items
-                if Library._themeEffect == "Halloween" or (Library._halloween and Library._halloween.on) then
-                    Library:SetHalloween(true)
+                if Library._themeEffect == "Winter" or Library._winter.on then
+                    Library:SetWinter(true)
                 end
             end
             
@@ -6061,8 +5936,15 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })
                 
-                Instances:Create("UIListLayout", {
+                Items["Body"] = Instances:Create("Frame", {
                     Parent = Items["Page"].Instance,
+                    Size = UDim2New(1, 0, 1, 0),
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                })
+
+                Instances:Create("UIListLayout", {
+                    Parent = Items["Body"].Instance,
                     Name = "\0",
                     FillDirection = Enum.FillDirection.Horizontal,
                     HorizontalFlex = Enum.UIFlexAlignment.Fill,
@@ -6072,7 +5954,7 @@ local Library do
                 })
                 
                 Instances:Create("UIPadding", {
-                    Parent = Items["Page"].Instance,
+                    Parent = Items["Body"].Instance,
                     Name = "\0",
                     PaddingTop = UDimNew(0, 10),
                     PaddingBottom = UDimNew(0, 10),
@@ -6082,7 +5964,7 @@ local Library do
 
                 for Index = 1, Page.Columns do 
                     local NewColumn = Instances:Create("ScrollingFrame", {
-                        Parent = Items["Page"].Instance,
+                        Parent = Items["Body"].Instance,
                         Name = "\0",
                         ScrollBarImageColor3 = FromRGB(0, 0, 0),
                         Active = true,
@@ -6108,6 +5990,78 @@ local Library do
                 end
 
                 Page.Items = Items
+            end
+
+            function Page:SubTab(Data)
+                Data = type(Data) == "table" and Data or { Name = Data }
+                if not self.SubTabs then
+                    self.SubTabs = {}
+                    Items["Body"].Instance.Position = UDim2FromOffset(0, 42)
+                    Items["Body"].Instance.Size = UDim2New(1, 0, 1, -42)
+                    Items["SubTabs"] = Instances:Create("ScrollingFrame", {
+                        Parent = Items["Page"].Instance,
+                        Position = UDim2FromOffset(10, 8),
+                        Size = UDim2New(1, -20, 0, 35),
+                        CanvasSize = UDim2FromOffset(0, 0),
+                        AutomaticCanvasSize = Enum.AutomaticSize.X,
+                        ScrollingDirection = Enum.ScrollingDirection.X,
+                        ScrollBarThickness = 2,
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                    })
+                    Instances:Create("UIListLayout", {
+                        Parent = Items["SubTabs"].Instance,
+                        FillDirection = Enum.FillDirection.Horizontal,
+                        SortOrder = Enum.SortOrder.LayoutOrder,
+                        Padding = UDimNew(0, 6),
+                    })
+                end
+
+                local tab = { Name = tostring(Data.Name or "Subtab"), Page = self, Sections = {} }
+                local button = Instances:Create("TextButton", {
+                    Parent = Items["SubTabs"].Instance,
+                    LayoutOrder = Data.LayoutOrder or (#self.SubTabs + 1),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    Size = UDim2FromOffset(0, 30),
+                    AutoButtonColor = false,
+                    BackgroundTransparency = 0.75,
+                    BorderSizePixel = 0,
+                    Text = tab.Name,
+                    TextSize = 13,
+                    FontFace = Library.Font,
+                })
+                button:AddToTheme({ TextColor3 = "Text", BackgroundColor3 = "Accent" })
+                Instances:Create("UICorner", { Parent = button.Instance, CornerRadius = UDimNew(0, 7) })
+                Instances:Create("UIPadding", {
+                    Parent = button.Instance, PaddingLeft = UDimNew(0, 13), PaddingRight = UDimNew(0, 13),
+                })
+                tab.Button = button
+
+                function tab:Activate()
+                    if self.Page.ActiveSubTab == self then return end
+                    self.Page.ActiveSubTab = self
+                    for _, sibling in ipairs(self.Page.SubTabs) do
+                        local active = sibling == self
+                        sibling.Button.Instance.BackgroundTransparency = active and 0.55 or 0.9
+                        for _, section in ipairs(sibling.Sections) do
+                            section.Items.Section.Instance.Visible = active
+                        end
+                    end
+                    for _, column in ipairs(self.Page.ColumnsData) do
+                        column.Instance.CanvasPosition = Vector2New(0, 0)
+                    end
+                end
+
+                function tab:Section(info)
+                    local data = table.clone(info or {})
+                    data.SubTab = self
+                    return self.Page:Section(data)
+                end
+
+                table.insert(self.SubTabs, tab)
+                button:Connect("Activated", function() tab:Activate() end)
+                if not self.ActiveSubTab then tab:Activate() end
+                return tab
             end
 
             local Debounce = false
@@ -8206,7 +8160,14 @@ local Library do
                 Section:ToggleBackground()
             end)
 
-            Section.Page.Sections[Section.Name] = Section
+            if Data.SubTab then
+                local tab = Data.SubTab
+                table.insert(tab.Sections, Section)
+                Section.Items.Section.Instance.Visible = Section.Page.ActiveSubTab == tab
+                Section.Page.Sections[Section] = Section
+            else
+                Section.Page.Sections[Section.Name] = Section
+            end
 
             return setmetatable(Section, Library.Sections)
         end
