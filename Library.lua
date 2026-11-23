@@ -264,16 +264,16 @@ local Library do
         ["New Year"] = {
             Full = true,
             Effect = "Winter",
-            ["Background"] = FromRGB(10, 22, 38),
-            ["Background 2"] = FromRGB(8, 16, 29),
-            ["Text"] = FromRGB(232, 247, 255),
-            ["Outline"] = FromRGB(47, 82, 111),
-            ["Section Top"] = FromRGB(25, 52, 74),
-            ["Section Background"] = FromRGB(13, 30, 50),
-            ["Section Background 2"] = FromRGB(20, 42, 63),
-            ["Accent"] = FromRGB(124, 219, 255),
-            ["AccentGradient"] = FromRGB(238, 193, 103),
-            ["Element"] = FromRGB(28, 50, 73),
+            ["Background"] = FromRGB(14, 25, 42),
+            ["Background 2"] = FromRGB(10, 19, 32),
+            ["Text"] = FromRGB(237, 247, 255),
+            ["Outline"] = FromRGB(68, 101, 134),
+            ["Section Top"] = FromRGB(31, 56, 83),
+            ["Section Background"] = FromRGB(17, 31, 51),
+            ["Section Background 2"] = FromRGB(22, 40, 64),
+            ["Accent"] = FromRGB(152, 218, 255),
+            ["AccentGradient"] = FromRGB(250, 204, 131),
+            ["Element"] = FromRGB(37, 58, 85),
         },
     }
 
@@ -479,9 +479,12 @@ local Library do
                 return
             end
 
-            -- Do not remap to TouchTap: GuiButton MouseButton1* already receives touch on mobile;
-            -- TouchTap mapping broke taps on TextButtons inside ScrollingFrames and many controls.
-
+            if Event == "Activated" then
+                return Library:Connect(self.Instance.Activated, function(input, ...)
+                    if input and Library._tooltipHoldInput == input then return end
+                    Callback(input, ...)
+                end, Name)
+            end
             return Library:Connect(self.Instance[Event], Callback, Name)
         end
 
@@ -997,6 +1000,7 @@ local Library do
         Parent = gethui(),
         Name = "\0",
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
+        ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
         DisplayOrder = 80,
         ResetOnSpawn = false
     })
@@ -1437,22 +1441,48 @@ local Library do
         layer.Parent = main
         state.layer = layer
 
+        local trim = InstanceNew("Frame")
+        trim.Name = "WinterTrim"
+        trim.Size = UDim2New(1, 0, 0, 2)
+        trim.BorderSizePixel = 0
+        trim.BackgroundColor3 = FromRGB(255, 255, 255)
+        trim.BackgroundTransparency = 0.2
+        trim.Interactable = false
+        trim.ZIndex = 31
+        trim.Parent = layer
+        local gradient = InstanceNew("UIGradient")
+        gradient.Color = RGBSequence{
+            RGBSequenceKeypoint(0, FromRGB(92, 159, 220)),
+            RGBSequenceKeypoint(0.37, FromRGB(218, 245, 255)),
+            RGBSequenceKeypoint(0.77, FromRGB(255, 213, 149)),
+            RGBSequenceKeypoint(1, FromRGB(108, 161, 219)),
+        }
+        gradient.Transparency = NumberSequence.new{
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.12, 0.16),
+            NumberSequenceKeypoint.new(0.88, 0.16), NumberSequenceKeypoint.new(1, 1),
+        }
+        gradient.Parent = trim
+
         local spawnIn = 0
-        local symbols = { "❄", "❅", "·" }
+        local symbols = { "❄", "❅", "·", "·" }
+        local maxFlakes = IsMobile and 8 or 16
+        local uiScale = main:FindFirstChildOfClass("UIScale")
         state.conn = RunService.Heartbeat:Connect(function(dt)
             if not layer.Parent then self:SetWinter(false); return end
             if not main.Visible then return end
-            local width, height = layer.AbsoluteSize.X, layer.AbsoluteSize.Y
-            if width < 8 or height < 8 then return end
+            local bounds = layer.AbsoluteSize
+            if bounds.X < 8 or bounds.Y < 8 then return end
+            local height = bounds.Y / (uiScale and uiScale.Scale or 1)
 
             spawnIn -= dt
-            if spawnIn <= 0 and #state.flakes < 14 then
-                spawnIn = 0.42
+            if spawnIn <= 0 and #state.flakes < maxFlakes then
+                spawnIn = IsMobile and 0.8 or 0.48
                 local flake = InstanceNew("TextLabel")
                 flake.Text = symbols[math.random(1, #symbols)]
                 flake.TextColor3 = FromRGB(215, 241, 255)
-                flake.TextTransparency = 0.57
-                flake.TextSize = math.random(12, 22)
+                local opacity = math.random(13, 26) / 100
+                flake.TextTransparency = 1
+                flake.TextSize = math.random(9, 17)
                 flake.BackgroundTransparency = 1
                 flake.Size = UDim2FromOffset(24, 24)
                 flake.Active = false
@@ -1460,8 +1490,8 @@ local Library do
                 flake.ZIndex = 31
                 flake.Parent = layer
                 table.insert(state.flakes, {
-                    object = flake, x = math.random(0, math.max(0, math.floor(width - 24))),
-                    y = -24, speed = math.random(22, 46), phase = math.random() * 6.28,
+                    object = flake, x = math.random(),
+                    y = -24, speed = math.random(19, 38), phase = math.random() * 6.28, opacity = opacity,
                 })
             end
 
@@ -1469,7 +1499,8 @@ local Library do
                 local flake = state.flakes[i]
                 flake.y += flake.speed * dt
                 flake.phase += dt
-                flake.object.Position = UDim2FromOffset(flake.x + MathSin(flake.phase) * 10, flake.y)
+                flake.object.Position = UDim2New(flake.x, MathSin(flake.phase) * 10 - 12, 0, flake.y)
+                flake.object.TextTransparency = 1 - flake.opacity * MathClamp(math.min(flake.y + 24, height - flake.y + 24) / 65, 0, 1)
                 flake.object.Rotation = MathSin(flake.phase) * 20
                 if flake.y > height + 24 then
                     flake.object:Destroy()
@@ -1522,18 +1553,23 @@ local Library do
         self._applyingPalette = false
     end
 
+    Library.IsPointOverFrame = function(self, Frame, point)
+        local frame = Frame.Instance
+        if not frame or not frame.Visible then return false end
+        local origin, size = frame.AbsolutePosition, frame.AbsoluteSize
+        return point.X >= origin.X and point.X <= origin.X + size.X
+            and point.Y >= origin.Y and point.Y <= origin.Y + size.Y
+    end
+
     Library.IsMouseOverFrame = function(self, Frame)
-        Frame = Frame.Instance
-
-        local MousePosition = Vector2New(Mouse.X, Mouse.Y)
-
-        return MousePosition.X >= Frame.AbsolutePosition.X and MousePosition.X <= Frame.AbsolutePosition.X + Frame.AbsoluteSize.X 
-        and MousePosition.Y >= Frame.AbsolutePosition.Y and MousePosition.Y <= Frame.AbsolutePosition.Y + Frame.AbsoluteSize.Y
+        return self:IsPointOverFrame(Frame, Vector2New(Mouse.X, Mouse.Y))
     end
 
     do
         local TooltipPadX = 10
         local TooltipVisible = false
+        local touchTip
+        local touchPosition
 
         local TooltipGui = Instances:Create("ScreenGui", {
             Parent = gethui(),
@@ -1596,13 +1632,13 @@ local Library do
         Library:Connect(RunService.RenderStepped, function()
             if not TooltipVisible then return end
             local mx, my
-            local ok, pos = pcall(UserInputService.GetMouseLocation, UserInputService)
-            if ok and pos then
-                mx, my = pos.X, pos.Y
+            if touchPosition then
+                mx, my = touchPosition.X, touchPosition.Y
             else
-                mx, my = Mouse.X, Mouse.Y + 36
+                local pos = UserInputService:GetMouseLocation()
+                mx, my = pos.X, pos.Y
             end
-            local ScreenSize = Camera.ViewportSize
+            local ScreenSize = TooltipGui.Instance.AbsoluteSize
             local TFSize = TooltipFrame.Instance.AbsoluteSize
             local X = mx + 14
             local Y = my + 20
@@ -1612,10 +1648,23 @@ local Library do
             if ScreenSize.Y > 100 and Y + TFSize.Y > ScreenSize.Y - 4 then
                 Y = my - TFSize.Y - 6
             end
-            TooltipFrame.Instance.Position = UDim2New(0, X, 0, Y)
+            TooltipFrame.Instance.Position = UDim2FromOffset(
+                MathClamp(X, 4, math.max(4, ScreenSize.X - TFSize.X - 4)),
+                MathClamp(Y, 4, math.max(4, ScreenSize.Y - TFSize.Y - 4))
+            )
         end)
 
-        Library.ShowTooltip = function(self, Text)
+        Library.ShowTooltip = function(self, Text, position)
+            touchPosition = position
+            local frame, label = TooltipFrame.Instance, TooltipLabel.Instance
+            frame.AutomaticSize = position and Enum.AutomaticSize.Y or Enum.AutomaticSize.X
+            frame.Size = position and UDim2FromOffset(math.min(286, math.max(100, TooltipGui.Instance.AbsoluteSize.X - 24)), 14)
+                or UDim2FromOffset(0, 26)
+            label.Position = position and UDim2FromOffset(0, 7) or UDim2New(0, 0, 0.5, 0)
+            label.AnchorPoint = position and Vector2New(0, 0) or Vector2New(0, 0.5)
+            label.Size = position and UDim2New(1, 0, 0, 0) or UDim2New(0, 0, 1, 0)
+            label.AutomaticSize = position and Enum.AutomaticSize.Y or Enum.AutomaticSize.X
+            label.TextWrapped = position ~= nil
             TooltipLabel.Instance.Text = Text
             TooltipFrame.Instance.Visible = true
             TooltipVisible = true
@@ -1625,6 +1674,7 @@ local Library do
 
         Library.HideTooltip = function(self)
             TooltipVisible = false
+            touchPosition = nil
             Tween:Create(TooltipFrame, TweenInfo.new(0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 1})
             Tween:Create(TooltipLabel, TweenInfo.new(0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {TextTransparency = 1})
             task.delay(0.12, function()
@@ -1638,14 +1688,44 @@ local Library do
             if not Text or Text == "" then return end
             local inst = (type(GuiObj) == "table" and GuiObj.Instance) or GuiObj
             if not inst then return end
-            local ok1 = pcall(function()
+            if IsMobile then
+                Library:Connect(inst.InputBegan, function(input)
+                    if input.UserInputType ~= Enum.UserInputType.Touch or touchTip then return end
+                    local gesture = { input = input, start = input.Position }
+                    touchTip = gesture
+                    task.delay(0.53, function()
+                        if gesture ~= touchTip or not inst.Parent or not inst.Visible then return end
+                        Library._tooltipHoldInput = input
+                        Library:ShowTooltip(Text, input.Position)
+                    end)
+                end)
+            end
+            pcall(function()
                 Library:Connect(inst.MouseEnter, function()
+                    if UserInputService:GetLastInputType() == Enum.UserInputType.Touch then return end
                     Library:ShowTooltip(Text)
                 end)
-            end)
-            local ok2 = pcall(function()
                 Library:Connect(inst.MouseLeave, function()
-                    Library:HideTooltip()
+                    if not touchPosition then Library:HideTooltip() end
+                end)
+            end)
+        end
+        if IsMobile then
+            Library:Connect(UserInputService.InputChanged, function(input)
+                if touchTip and input == touchTip.input and (input.Position - touchTip.start).Magnitude > 9 then
+                    touchTip = nil
+                    if touchPosition then Library:HideTooltip() end
+                end
+            end)
+            Library:Connect(UserInputService.InputEnded, function(input)
+                if touchTip and input == touchTip.input then touchTip = nil end
+                if Library._tooltipHoldInput ~= input then return end
+                task.delay(0.1, function()
+                    if Library._tooltipHoldInput == input then Library._tooltipHoldInput = nil end
+                end)
+                local shownAt = touchPosition
+                task.delay(1.5, function()
+                    if shownAt and touchPosition == shownAt then Library:HideTooltip() end
                 end)
             end)
         end
@@ -4564,7 +4644,7 @@ local Library do
                     BorderColor3 = Library.Theme.Background,
                     AnchorPoint = Vector2New(0.5, 0.5),
                     BackgroundTransparency = 0.12,
-                    Position = UDim2New(0.5519999861717224, 0, 0.5, 0),
+                    Position = IsMobile and UDim2New(0.5, 0, 0.5, 0) or UDim2New(0.552, 0, 0.5, 0),
                     Size = Data.Size or (IsMobile and UDim2New(0, 520, 0, 420) or UDim2New(0, 940, 0, 860)),
                     ZIndex = 2,
                     BorderSizePixel = 0,
@@ -4581,7 +4661,7 @@ local Library do
                     Items["MobileUIScale"] = Instances:Create("UIScale", {
                         Parent = Items["MainFrame"].Instance,
                         Name = "\0",
-                        Scale = (Data.MobileScale or 0.74) * 0.88
+                        Scale = MathClamp(tonumber(Data.MobileScale) or 0.94, 0.5, 1)
                     })
                 else
                     Items["IntroScale"] = Instance.new("UIScale")
@@ -4590,11 +4670,13 @@ local Library do
                 end
 
                 Library.MainFrame = Items["MainFrame"]
-                Items["MainFrame"]:MakeResizeable(Vector2New(Items["MainFrame"].Instance.AbsoluteSize.X, Items["MainFrame"].Instance.AbsoluteSize.Y), Vector2New(9999, 9999), OriginalSizes)
+                if not IsMobile then
+                    Items["MainFrame"]:MakeResizeable(Vector2New(Items["MainFrame"].Instance.AbsoluteSize.X, Items["MainFrame"].Instance.AbsoluteSize.Y), Vector2New(9999, 9999), OriginalSizes)
+                end
                 Library:MakeBlurred(Items["MainFrame"], Window)
 
                 -- Visible resize handle: parented to Holder so MainFrame UIScale does not scale the grip.
-                do
+                if not IsMobile then
                     Items["ResizeCorner"] = Instances:Create("TextButton", {
                         Parent = Library.Holder.Instance,
                         Name = "\0",
@@ -4728,7 +4810,7 @@ local Library do
                 end
     
                 Items["MainFrame"]:Connect("InputBegan", function(Input)
-                    if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+                    if not IsMobile and Input.UserInputType == Enum.UserInputType.MouseButton1 then
                         Dragging = true
     
                         DragStart = Input.Position
@@ -4743,6 +4825,7 @@ local Library do
                 end)
 
                 Items["LeftTabs"]:Connect("InputBegan", function(Input)
+                    if IsMobile then return end
                     if Items["TabSearch"] and Library:IsMouseOverFrame(Items["TabSearch"]) then
                         return
                     end
@@ -4774,7 +4857,7 @@ local Library do
                         Text = "",
                         AutoButtonColor = false,
                         Name = "\0",
-                        Position = UDim2New(0.5, 0, 0, 20),
+                        Position = IsMobile and UDim2New(1, -36, 1, -66) or UDim2New(0.5, 0, 0, 20),
                         AnchorPoint = Vector2New(0.5, 0),
                         Visible = true,
                         BorderColor3 = FromRGB(0, 0, 0),
@@ -4826,71 +4909,68 @@ local Library do
 
                     Library.FloatingButtonWidget = Items["FloatingButton"]
 
-                    local floatDragging = false
-                    local floatPressStart = nil
-                    local floatGrabOffset = nil
-                    local floatMoved = false
-                    local FLOAT_DRAG_PX = 8
-                    local FLOAT_LERP = 0.15
+                    local button = Items["FloatingButton"].Instance
+                    local holder = Library.Holder.Instance
+                    local press
+                    local restingPosition
 
-                    Items["FloatingButton"]:Connect("InputBegan", function(Input)
-                        if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                            floatDragging = true
-                            floatMoved = false
-                            local inst = Items["FloatingButton"].Instance
-                            floatPressStart = UserInputService:GetMouseLocation()
-                            local ap = inst.AbsolutePosition
-                            floatGrabOffset = Vector2.new(floatPressStart.X - ap.X, floatPressStart.Y - ap.Y)
+                    local function keepOnScreen(position)
+                        local bounds, size = holder.AbsoluteSize, button.AbsoluteSize
+                        local padding = 8
+                        local halfWidth = size.X * 0.5
+                        return Vector2New(
+                            MathClamp(position.X, halfWidth + padding, math.max(halfWidth + padding, bounds.X - halfWidth - padding)),
+                            MathClamp(position.Y, padding, math.max(padding, bounds.Y - size.Y - padding))
+                        )
+                    end
+
+                    local function applyDrag(input)
+                        local delta = Vector2New(input.Position.X, input.Position.Y) - press.pointer
+                        if delta.Magnitude >= (press.touch and 10 or 5) then press.moved = true end
+                        if not press.moved then return end
+                        local position = keepOnScreen(press.origin + delta)
+                        local bounds = holder.AbsoluteSize
+                        if bounds.X <= 0 or bounds.Y <= 0 then return end
+                        restingPosition = Vector2New(position.X / bounds.X, position.Y / bounds.Y)
+                        button.Position = UDim2FromOffset(position.X, position.Y)
+                    end
+
+                    Items["FloatingButton"]:Connect("InputBegan", function(input)
+                        local touch = input.UserInputType == Enum.UserInputType.Touch
+                        if press or (not touch and input.UserInputType ~= Enum.UserInputType.MouseButton1) then return end
+                        local position = button.AbsolutePosition - holder.AbsolutePosition
+                        press = {
+                            input = input,
+                            touch = touch,
+                            pointer = Vector2New(input.Position.X, input.Position.Y),
+                            origin = position + Vector2New(button.AbsoluteSize.X * 0.5, 0),
+                        }
+                    end)
+                    Library:Connect(UserInputService.InputChanged, function(input)
+                        if press and ((press.touch and input == press.input)
+                            or (not press.touch and input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                            applyDrag(input)
                         end
                     end)
-
-                    Library:Connect(UserInputService.InputEnded, function(Input)
-                        if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                            if floatDragging then
-                                if not floatMoved then
-                                    Window:SetOpen(not Window.IsOpen)
-                                end
-                            end
-                            floatDragging = false
-                            floatPressStart = nil
-                            floatGrabOffset = nil
-                            floatMoved = false
+                    Library:Connect(UserInputService.InputEnded, function(input)
+                        if not press or (input ~= press.input
+                            and (press.touch or input.UserInputType ~= Enum.UserInputType.MouseButton1)) then return end
+                        if input.UserInputState ~= Enum.UserInputState.Cancel then
+                            if press.touch then applyDrag(input) end
+                            if not press.moved and button.Visible then Window:Toggle() end
                         end
+                        press = nil
                     end)
-
-                    Library:Connect(RunService.RenderStepped, function(dt)
-                        if not floatDragging or not floatGrabOffset then
-                            return
-                        end
-                        local inst = Items["FloatingButton"].Instance
-                        local parent = inst.Parent
-                        if not parent then return end
-                        local now = UserInputService:GetMouseLocation()
-                        local totalDx = now.X - floatPressStart.X
-                        local totalDy = now.Y - floatPressStart.Y
-                        if (Vector2New(totalDx, totalDy)).Magnitude >= FLOAT_DRAG_PX then
-                            floatMoved = true
-                        end
-                        if not floatMoved then
-                            return
-                        end
-                        local psz = parent.AbsoluteSize
-                        local sz = inst.AbsoluteSize
-                        local p0 = parent.AbsolutePosition
-                        local anch = inst.AnchorPoint
-                        local wantTLX = now.X - floatGrabOffset.X
-                        local wantTLY = now.Y - floatGrabOffset.Y
-                        wantTLX = MathClamp(wantTLX, p0.X, p0.X + MathMax(0, psz.X - sz.X))
-                        wantTLY = MathClamp(wantTLY, p0.Y, p0.Y + MathMax(0, psz.Y - sz.Y))
-                        local tx = wantTLX - p0.X + anch.X * sz.X
-                        local ty = wantTLY - p0.Y + anch.Y * sz.Y
-                        local cur = inst.Position
-                        local cx = cur.X.Offset
-                        local cy = cur.Y.Offset
-                        local a = math.clamp(FLOAT_LERP * (1 / math.max(dt, 1 / 240)), 0.06, 0.32)
-                        inst.Position = UDim2FromOffset(cx + (tx - cx) * a, cy + (ty - cy) * a)
+                    Library:Connect(UserInputService.WindowFocusReleased, function() press = nil end)
+                    Library:Connect(holder:GetPropertyChangedSignal("AbsoluteSize"), function()
+                        press = nil
+                        if not restingPosition then return end
+                        local bounds = holder.AbsoluteSize
+                        local position = keepOnScreen(Vector2New(bounds.X * restingPosition.X, bounds.Y * restingPosition.Y))
+                        button.Position = UDim2FromOffset(position.X, position.Y)
                     end)
                 end
+
 
                 Items["PagePlaceholder"] = Instances:Create("Frame", {
                     Parent = Items["MainFrame"].Instance,
@@ -5287,7 +5367,7 @@ local Library do
                     searchClear.Instance.Visible = text ~= ""
                     Window:FilterSidebar(text)
                 end)
-                searchClear:Connect("MouseButton1Down", function()
+                searchClear:Connect("Activated", function()
                     searchBox.Instance.Text = ""
                     pcall(function()
                         searchBox.Instance:CaptureFocus()
@@ -5403,7 +5483,7 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  Items["CloseIcon"]:AddToTheme({ImageColor3 = "Text"})        
                 
-                Items["CloseButton"]:Connect("MouseButton1Down", function()
+                Items["CloseButton"]:Connect("Activated", function()
                     Library:Unload()
                 end)
 
@@ -5515,7 +5595,7 @@ local Library do
                     return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
                 end})
 
-                Items["MinimizeButton"]:Connect("MouseButton1Down", function()
+                Items["MinimizeButton"]:Connect("Activated", function()
                     Window:SetOpen(false)
                 end)
 
@@ -5547,6 +5627,94 @@ local Library do
                     })
                 end)
                 
+                if IsMobile then
+                    local holder = Library.Holder.Instance
+                    local main = Items["MainFrame"].Instance
+                    local sidebar = Items["LeftTabs"].Instance
+                    local content = Items["Content"].Instance
+                    local narrow, navigationOpen = false, false
+                    local navigation = Instances:Create("TextButton", {
+                        Parent = main,
+                        Text = "",
+                        Position = UDim2FromOffset(8, 6),
+                        Size = UDim2FromOffset(44, 44),
+                        AutoButtonColor = true,
+                        Visible = false,
+                        ZIndex = 5,
+                    })
+                    navigation:AddToTheme({ BackgroundColor3 = "Element" })
+                    Instances:Create("UICorner", { Parent = navigation.Instance, CornerRadius = UDimNew(0, 9) })
+                    local navIcon = Instances:Create("ImageLabel", {
+                        Parent = navigation.Instance,
+                        Position = UDim2FromOffset(12, 12),
+                        Size = UDim2FromOffset(20, 20),
+                        BackgroundTransparency = 1,
+                        ZIndex = 6,
+                    })
+                    navIcon:AddToTheme({ ImageColor3 = "Accent" })
+                    local navText = Instances:Create("TextLabel", {
+                        Parent = navigation.Instance,
+                        Size = UDim2New(1, 0, 1, 0),
+                        TextSize = 22,
+                        BackgroundTransparency = 1,
+                        ZIndex = 6,
+                    })
+                    navText:AddToTheme({ TextColor3 = "Accent" })
+
+                    function Window:SetNavigationOpen(open)
+                        navigationOpen = narrow and open
+                        sidebar.Visible = not narrow or navigationOpen
+                        content.Visible = not navigationOpen
+                        local icon = navigationOpen and "arrow-left" or "menu"
+                        local url = Library:ResolveIcon(icon)
+                        if url then Library:SetIcon(navIcon.Instance, icon) end
+                        navIcon.Instance.Visible = url ~= nil
+                        navText.Instance.Visible = not url
+                        navText.Instance.Text = navigationOpen and "‹" or "☰"
+                    end
+                    navigation:Connect("Activated", function() Window:SetNavigationOpen(not navigationOpen) end)
+
+                    local scale = Items["MobileUIScale"].Instance.Scale
+                    local function fitMobileWindow()
+                        local bounds = holder.AbsoluteSize
+                        if bounds.X <= 0 or bounds.Y <= 0 then return end
+                        local preferred = Data.Size
+                        local width, height = math.max(1, bounds.X - 16), math.max(1, bounds.Y - 16)
+                        if preferred then
+                            local preferredWidth = bounds.X * preferred.X.Scale + preferred.X.Offset * scale
+                            local preferredHeight = bounds.Y * preferred.Y.Scale + preferred.Y.Offset * scale
+                            if preferredWidth > 0 then width = math.min(width, preferredWidth) end
+                            if preferredHeight > 0 then height = math.min(height, preferredHeight) end
+                        end
+                        main.Size = UDim2FromOffset(math.floor(width / scale), math.floor(height / scale))
+
+                        local wasNarrow = narrow
+                        narrow = width < 620
+                        local sidebarWidth = 208
+                        navigation.Instance.Visible = narrow
+                        Items["Logo"].Instance.Visible = not narrow
+                        sidebar.Size = UDim2New(narrow and 1 or 0, narrow and 0 or sidebarWidth, 1, -55)
+                        content.Position = UDim2FromOffset(narrow and 0 or sidebarWidth, 55)
+                        content.Size = UDim2New(1, narrow and 0 or -sidebarWidth, 1, -55)
+                        for _, name in { "CloseButton", "MinimizeButton" } do
+                            Items[name].Instance.Size = UDim2FromOffset(44, 44)
+                        end
+                        Items["CloseButton"].Instance.Position = UDim2New(1, -8, 0, 6)
+                        Items["MinimizeButton"].Instance.Position = UDim2New(1, -58, 0, 6)
+                        for _, name in { "Title", "SubTitle" } do
+                            local label = Items[name].Instance
+                            label.AutomaticSize = Enum.AutomaticSize.None
+                            label.Size = UDim2New(1, -168, 0, 18)
+                            label.Position = UDim2FromOffset(59, name == "Title" and 10 or 29)
+                            label.TextTruncate = Enum.TextTruncate.AtEnd
+                            label.TextXAlignment = Enum.TextXAlignment.Left
+                        end
+                        Window:SetNavigationOpen(wasNarrow and navigationOpen)
+                    end
+                    Library:Connect(holder:GetPropertyChangedSignal("AbsoluteSize"), fitMobileWindow)
+                    fitMobileWindow()
+                end
+
                 Window.Items = Items
                 if Library._themeEffect == "Winter" or Library._winter.on then
                     Library:SetWinter(true)
@@ -5556,6 +5724,7 @@ local Library do
             local Debounce = false
 
             function Window:SetCenter()
+                if IsMobile then return end
                 local CenterPosition = Items["MainFrame"].Instance.AbsolutePosition
                 task.wait()
                 Items["MainFrame"].Instance.AnchorPoint = Vector2New(0, 0)
@@ -5574,6 +5743,8 @@ local Library do
 
                 if Window.IsOpen then 
                     Items["MainFrame"].Instance.Visible = true 
+                elseif Window.SetNavigationOpen then
+                    Window:SetNavigationOpen(false)
                 end
 
                 local Descendants = Items["MainFrame"].Instance:GetDescendants()
@@ -5611,9 +5782,6 @@ local Library do
                 task.spawn(function()
                     if Items["IntroScale"] then
                         TweenService:Create(Items["IntroScale"], TweenInfo.new(0.48, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1}):Play()
-                    elseif Items["MobileUIScale"] and Items["MobileUIScale"].Instance then
-                        local target = Data.MobileScale or 0.74
-                        TweenService:Create(Items["MobileUIScale"].Instance, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = target}):Play()
                     end
                     local firstPage = Window.Pages and Window.Pages[1]
                     if firstPage and not firstPage.Active then
@@ -5630,8 +5798,6 @@ local Library do
                     end
                 end)
             end
-
-            -- FloatingButton: toggle is handled in InputEnded (after MakeDraggable) so drag does not open/close the window.
 
             --[[
             function Window:GetClosestFrame(Position, Instances)
@@ -5962,14 +6128,15 @@ local Library do
                     PaddingLeft = UDimNew(0, 10)
                 })                
 
-                for Index = 1, Page.Columns do 
+                for Index = 1, IsMobile and 1 or Page.Columns do
                     local NewColumn = Instances:Create("ScrollingFrame", {
                         Parent = Items["Body"].Instance,
                         Name = "\0",
                         ScrollBarImageColor3 = FromRGB(0, 0, 0),
                         Active = true,
                         AutomaticCanvasSize = Enum.AutomaticSize.Y,
-                        ScrollBarThickness = 0,
+                        ScrollBarThickness = IsMobile and 4 or 0,
+                        ScrollingDirection = Enum.ScrollingDirection.Y,
                         BorderColor3 = FromRGB(0, 0, 0),
                         BackgroundTransparency = 1,
                         Size = UDim2New(0, 100, 0, 100),
@@ -5978,15 +6145,21 @@ local Library do
                         BorderSizePixel = 0,
                         CanvasSize = UDim2New(0, 0, 0, 0)
                     })
+                    NewColumn:AddToTheme({ ScrollBarImageColor3 = "Accent" })
                     
                     Instances:Create("UIListLayout", {
                         Parent = NewColumn.Instance,
                         Name = "\0",
-                        Padding = UDimNew(0, 5),
+                            Padding = UDimNew(0, 5),
                         SortOrder = Enum.SortOrder.LayoutOrder
                     })
 
                     Page.ColumnsData[Index] = NewColumn
+                end
+                if IsMobile then
+                    for index = 2, Page.Columns do
+                        Page.ColumnsData[index] = Page.ColumnsData[1]
+                    end
                 end
 
                 Page.Items = Items
@@ -5994,20 +6167,37 @@ local Library do
 
             function Page:SubTab(Data)
                 Data = type(Data) == "table" and Data or { Name = Data }
+                local tabHeight = IsMobile and 42 or 33
                 if not self.SubTabs then
                     self.SubTabs = {}
-                    Items["Body"].Instance.Position = UDim2FromOffset(0, 42)
-                    Items["Body"].Instance.Size = UDim2New(1, 0, 1, -42)
+                    local stripHeight = tabHeight + 12
+                    Items["Body"].Instance.Position = UDim2FromOffset(0, stripHeight + 4)
+                    Items["Body"].Instance.Size = UDim2New(1, 0, 1, -stripHeight - 4)
                     Items["SubTabs"] = Instances:Create("ScrollingFrame", {
                         Parent = Items["Page"].Instance,
-                        Position = UDim2FromOffset(10, 8),
-                        Size = UDim2New(1, -20, 0, 35),
+                        Position = UDim2FromOffset(10, 6),
+                        Size = UDim2New(1, -20, 0, stripHeight),
                         CanvasSize = UDim2FromOffset(0, 0),
                         AutomaticCanvasSize = Enum.AutomaticSize.X,
                         ScrollingDirection = Enum.ScrollingDirection.X,
-                        ScrollBarThickness = 2,
-                        BackgroundTransparency = 1,
+                        ScrollBarThickness = 3,
+                        ScrollBarImageTransparency = 0.25,
+                        BackgroundTransparency = 0.08,
                         BorderSizePixel = 0,
+                        ClipsDescendants = true,
+                        Active = true,
+                        ZIndex = 4,
+                    })
+                    Items["SubTabs"]:AddToTheme({ BackgroundColor3 = "Background 2", ScrollBarImageColor3 = "Accent" })
+                    Instances:Create("UICorner", {
+                        Parent = Items["SubTabs"].Instance,
+                        CornerRadius = UDimNew(0, 9),
+                    })
+                    Instances:Create("UIPadding", {
+                        Parent = Items["SubTabs"].Instance,
+                        PaddingTop = UDimNew(0, 4),
+                        PaddingLeft = UDimNew(0, 4),
+                        PaddingRight = UDimNew(0, 4),
                     })
                     Instances:Create("UIListLayout", {
                         Parent = Items["SubTabs"].Instance,
@@ -6022,27 +6212,87 @@ local Library do
                     Parent = Items["SubTabs"].Instance,
                     LayoutOrder = Data.LayoutOrder or (#self.SubTabs + 1),
                     AutomaticSize = Enum.AutomaticSize.X,
-                    Size = UDim2FromOffset(0, 30),
+                    Size = UDim2FromOffset(0, tabHeight),
                     AutoButtonColor = false,
-                    BackgroundTransparency = 0.75,
+                    BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Text = tab.Name,
-                    TextSize = 13,
-                    FontFace = Library.Font,
+                    Text = "",
+                    ZIndex = 5,
                 })
-                button:AddToTheme({ TextColor3 = "Text", BackgroundColor3 = "Accent" })
+                button:AddToTheme({ BackgroundColor3 = function()
+                    if self.ActiveSubTab == tab then
+                        return Library.Theme.Element:Lerp(Library.Theme.Accent, 0.22)
+                    end
+                    return Library.Theme.Element
+                end })
                 Instances:Create("UICorner", { Parent = button.Instance, CornerRadius = UDimNew(0, 7) })
                 Instances:Create("UIPadding", {
                     Parent = button.Instance, PaddingLeft = UDimNew(0, 13), PaddingRight = UDimNew(0, 13),
                 })
+                Instances:Create("UIListLayout", {
+                    Parent = button.Instance,
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    Padding = UDimNew(0, 7),
+                })
+                local stroke = Instances:Create("UIStroke", {
+                    Parent = button.Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    Thickness = 1,
+                    Transparency = 1,
+                })
+                stroke:AddToTheme({ Color = "Accent" })
+                local image, offset, size = Library:ResolveIcon(Data.Icon or Data.icon)
+                local icon
+                if image then
+                    icon = Instances:Create("ImageLabel", {
+                        Parent = button.Instance,
+                        BackgroundTransparency = 1,
+                        Size = UDim2FromOffset(16, 16),
+                        Image = image,
+                        ImageRectOffset = offset,
+                        ImageRectSize = size,
+                        ScaleType = Enum.ScaleType.Fit,
+                        ZIndex = 6,
+                    })
+                    icon:AddToTheme({ ImageColor3 = function()
+                        return self.ActiveSubTab == tab and Library.Theme.Accent or Library.Theme.Text
+                    end })
+                end
+                local label = Instances:Create("TextLabel", {
+                    Parent = button.Instance,
+                    BackgroundTransparency = 1,
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    LayoutOrder = 1,
+                    Size = UDim2FromOffset(0, tabHeight),
+                    Text = tab.Name,
+                    TextSize = IsMobile and 15 or 14,
+                    FontFace = Library.Font,
+                    ZIndex = 6,
+                })
+                label:AddToTheme({ TextColor3 = "Text" })
                 tab.Button = button
+
+                function tab:Refresh(hovered)
+                    local active = self.Page.ActiveSubTab == self
+                    button.Instance.BackgroundColor3 = active and Library.Theme.Element:Lerp(Library.Theme.Accent, 0.22) or Library.Theme.Element
+                    button.Instance.BackgroundTransparency = active and 0 or (hovered and 0.32 or 1)
+                    stroke.Instance.Transparency = active and 0.45 or 1
+                    label.Instance.TextTransparency = active and 0 or 0.15
+                    if icon then
+                        icon.Instance.ImageColor3 = active and Library.Theme.Accent or Library.Theme.Text
+                        icon.Instance.ImageTransparency = active and 0 or 0.18
+                    end
+                end
 
                 function tab:Activate()
                     if self.Page.ActiveSubTab == self then return end
                     self.Page.ActiveSubTab = self
                     for _, sibling in ipairs(self.Page.SubTabs) do
                         local active = sibling == self
-                        sibling.Button.Instance.BackgroundTransparency = active and 0.55 or 0.9
+                        sibling:Refresh(false)
                         for _, section in ipairs(sibling.Sections) do
                             section.Items.Section.Instance.Visible = active
                         end
@@ -6060,6 +6310,9 @@ local Library do
 
                 table.insert(self.SubTabs, tab)
                 button:Connect("Activated", function() tab:Activate() end)
+                button:OnHover(function() tab:Refresh(true) end)
+                button:OnHoverLeave(function() tab:Refresh(false) end)
+                tab:Refresh(false)
                 if not self.ActiveSubTab then tab:Activate() end
                 return tab
             end
@@ -6146,8 +6399,9 @@ local Library do
                 end
             end
 
-            Items["Inactive"]:Connect("MouseButton1Down", function()
+            Items["Inactive"]:Connect("Activated", function()
                 local W = Page.Window
+                if W.SetNavigationOpen then W:SetNavigationOpen(false) end
                 local now = tick()
                 if now < (W._tabCooldownUntil or 0) then
                     return
@@ -7188,7 +7442,8 @@ local Library do
                 end
             end
 
-            DashItems["Inactive"]:Connect("MouseButton1Down", function()
+            DashItems["Inactive"]:Connect("Activated", function()
+                if DashPage.Window.SetNavigationOpen then DashPage.Window:SetNavigationOpen(false) end
                 local W = DashPage.Window
                 local now = tick()
                 if now < (W._tabCooldownUntil or 0) then return end
@@ -8156,7 +8411,7 @@ local Library do
                 end
             end
 
-            Items["Toggle"]:Connect("MouseButton1Down", function()
+            Items["Toggle"]:Connect("Activated", function()
                 Section:ToggleBackground()
             end)
 
@@ -8199,7 +8454,7 @@ local Library do
                     AutoButtonColor = false,
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Size = UDim2New(1, 0, 0, 18),
+                    Size = UDim2New(1, 0, 0, IsMobile and 40 or 18),
                     ZIndex = 2,
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(255, 255, 255)
@@ -8209,6 +8464,8 @@ local Library do
                     Parent = Items["Toggle"].Instance,
                     Name = "\0",
                     Size = UDim2New(0, 18, 0, 18),
+                    AnchorPoint = Vector2New(0, 0.5),
+                    Position = UDim2New(0, 0, 0.5, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
                     ZIndex = 2,
                     BorderSizePixel = 0,
@@ -8284,15 +8541,17 @@ local Library do
                 end})
 
                 Items["Toggle"]:OnHover(function()
-                    Items["Indicator"]:Tween(TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2New(0, 21, 0, 21), Position = UDim2New(0, -3, 0, -3)})
+                    if IsMobile then return end
+                    Items["Indicator"]:Tween(TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2New(0, 21, 0, 21), Position = UDim2New(0, -3, 0.5, 0)})
                 end)
 
                 Items["Toggle"]:OnHoverLeave(function()
-                    Items["Indicator"]:Tween(TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2New(0, 18, 0, 18), Position = UDim2New(0, 0, 0, 0)})
+                    if IsMobile then return end
+                    Items["Indicator"]:Tween(TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2New(0, 18, 0, 18), Position = UDim2New(0, 0, 0.5, 0)})
                 end)
             end
 
-            Items["Indicator"].Instance.Position = UDim2New(0, 60, 0, 0)
+            Items["Indicator"].Instance.Position = UDim2New(0, 60, 0.5, 0)
             Items["Text"].Instance.Position = UDim2New(0, 84, 0, 0)
 
             --Toggle.Section.Items["Fade"].Instance.Size = UDim2New(1, 0, 0, Toggle.Section.Items["Content"].Instance.AbsoluteSize.X - 180)
@@ -8683,23 +8942,28 @@ local Library do
             end
 
             function Toggle:RefreshPosition(Bool)
+                if IsMobile then
+                    local label = Items["Text"].Instance
+                    label.AutomaticSize = Enum.AutomaticSize.None
+                    label.Size = UDim2New(1, -60, 1, 0)
+                    label.TextWrapped = true
+                    label.Position = UDim2FromOffset(24, 0)
+                    Items["Indicator"].Instance.Position = UDim2New(0, 0, 0.5, 0)
+                    return
+                end
                 if Bool then 
-                    Items["Indicator"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0, 0)})
+                    Items["Indicator"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0.5, 0)})
                     Items["Text"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 24, 0, 0)})
                 else
-                    Items["Indicator"].Instance.Position = UDim2New(0, 60, 0, 0)
+                    Items["Indicator"].Instance.Position = UDim2New(0, 60, 0.5, 0)
                     Items["Text"].Instance.Position = UDim2New(0, 84, 0, 0)
                 end 
             end
 
-            Items["Toggle"]:Connect("InputBegan", function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-                    if Items["SettingsIcon"] and Library:IsMouseOverFrame(Items["SettingsIcon"]) then
-                        return 
-                    end
-                    
-                    Toggle:Set(not Toggle.Value)
-                end
+            Items["Toggle"]:Connect("Activated", function(input)
+                if input and Items["SettingsIcon"]
+                    and Library:IsPointOverFrame(Items["SettingsIcon"], input.Position) then return end
+                Toggle:Set(not Toggle.Value)
             end)
 
             Toggle:Set(Toggle.Default, true)
@@ -8741,7 +9005,7 @@ local Library do
                     Text = "",
                     AutoButtonColor = false,
                     BorderSizePixel = 0,
-                    Size = UDim2New(1, 0, 0, 32),
+                    Size = UDim2New(1, 0, 0, IsMobile and 44 or 32),
                     ZIndex = 2,
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(27, 26, 29)
@@ -8857,7 +9121,7 @@ local Library do
                 end
             end
 
-            Items["Button"]:Connect("MouseButton1Down", function()
+            Items["Button"]:Connect("Activated", function()
                 Button:Press()
             end)
 
@@ -9088,7 +9352,9 @@ local Library do
                 Slider.Value = Library:Round(MathClamp(Value, Slider.Min, Slider.Max), Slider.Decimals)
                 Library.Flags[Slider.Flag] = Slider.Value
 
-                Items["Accent"]:Tween(TweenInfo.new(Library.Tween.Time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2New((Slider.Value - Slider.Min) / (Slider.Max - Slider.Min), 0, 1, 0)})
+                local range = Slider.Max - Slider.Min
+                local fill = range > 0 and (Slider.Value - Slider.Min) / range or 0
+                Items["Accent"]:Tween(TweenInfo.new(Library.Tween.Time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2New(fill, 0, 1, 0)})
                 Items["Value"].Instance.Text = StringFormat("%s%s", Slider.Value, Slider.Suffix)
 
                 if Slider.Value >= Slider.Max then 
@@ -9102,11 +9368,11 @@ local Library do
                 end
             end
 
-            Items["Plus"]:Connect("MouseButton1Down", function()
+            Items["Plus"]:Connect("Activated", function()
                 Slider:Set(Slider.Value + Slider.Decimals)
             end)
 
-            Items["Minus"]:Connect("MouseButton1Down", function()
+            Items["Minus"]:Connect("Activated", function()
                 Slider:Set(Slider.Value - Slider.Decimals)
             end)
 
@@ -9120,42 +9386,28 @@ local Library do
                 end
             end)
 
-            local InputChanged 
-            
-            Items["RealSlider"]:Connect("InputBegan", function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                    Slider.Sliding = true
-
-                    local SizeX = (Input.Position.X - Items["RealSlider"].Instance.AbsolutePosition.X) / Items["RealSlider"].Instance.AbsoluteSize.X
-                    local Value = ((Slider.Max - Slider.Min) * SizeX) + Slider.Min
-
-                    Slider:Set(Value)
-
-                    if InputChanged then
-                        return
-                    end
-
-                    InputChanged = Input.Changed:Connect(function()
-                        if Input.UserInputState == Enum.UserInputState.End then
-                            Slider.Sliding = false
-
-                            InputChanged:Disconnect()
-                            InputChanged = nil
-                        end
-                    end)
-                end
+            local slidingInput
+            local function updateSlider(input)
+                local bar = Items["RealSlider"].Instance
+                if bar.AbsoluteSize.X <= 0 then return end
+                local fraction = MathClamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+                Slider:Set(Slider.Min + (Slider.Max - Slider.Min) * fraction)
+            end
+            Items["RealSlider"]:Connect("InputBegan", function(input)
+                if slidingInput or (input.UserInputType ~= Enum.UserInputType.MouseButton1
+                    and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+                slidingInput = input
+                updateSlider(input)
             end)
-
-            Library:Connect(UserInputService.InputChanged, function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
-                    if Slider.Sliding then
-                        local SizeX = (Input.Position.X - Items["RealSlider"].Instance.AbsolutePosition.X) / Items["RealSlider"].Instance.AbsoluteSize.X
-                        local Value = ((Slider.Max - Slider.Min) * SizeX) + Slider.Min
-
-                        Slider:Set(Value)
-                    end
-                end
+            Library:Connect(UserInputService.InputChanged, function(input)
+                if not slidingInput then return end
+                if input == slidingInput or (slidingInput.UserInputType == Enum.UserInputType.MouseButton1
+                    and input.UserInputType == Enum.UserInputType.MouseMovement) then updateSlider(input) end
             end)
+            Library:Connect(UserInputService.InputEnded, function(input)
+                if input == slidingInput then slidingInput = nil end
+            end)
+            Library:Connect(UserInputService.WindowFocusReleased, function() slidingInput = nil end)
 
             if Slider.Default then
                 Slider:Set(Slider.Default, true)
@@ -9204,7 +9456,7 @@ local Library do
                     Parent = Dropdown.Section.Items["Content"].Instance,
                     Name = "\0",
                     BackgroundTransparency = 1,
-                    Size = UDim2New(1, 0, 0, 25),
+                    Size = UDim2New(1, 0, 0, IsMobile and 62 or 25),
                     BorderColor3 = FromRGB(0, 0, 0),
                     ZIndex = 2,
                     BorderSizePixel = 0,
@@ -9456,6 +9708,18 @@ local Library do
             end
 
             function Dropdown:RefreshPosition(Bool)
+                if IsMobile then
+                    local label = Items["Text"].Instance
+                    label.AnchorPoint = Vector2New(0, 0)
+                    label.AutomaticSize = Enum.AutomaticSize.None
+                    label.Size = UDim2New(1, 0, 0, 20)
+                    label.TextTruncate = Enum.TextTruncate.AtEnd
+                    label.TextXAlignment = Enum.TextXAlignment.Left
+                    label.Position = UDim2FromOffset(0, 0)
+                    Items["RealDropdown"].Instance.Size = UDim2New(1, 0, 0, 38)
+                    Items["RealDropdown"].Instance.Position = UDim2New(1, 0, 0, 22)
+                    return
+                end
                 if Bool then
                     Items["Text"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(0, 0, 0.5, 0)})
                     Items["RealDropdown"]:Tween(TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2New(1, 0, 0, 0)})
@@ -9512,14 +9776,34 @@ local Library do
                     
                     local searchPad = Dropdown.SearchEnabled and 32 or 0
                     local bulkPad = Dropdown.Multi and ((IsMobile and 30 or 24) + 4) or 0
-                    RenderStepped = RunService.RenderStepped:Connect(function()
-                        local popupW = Items["RealDropdown"].Instance.AbsoluteSize.X
+                    local function fitPopup()
+                        local holder = Library.Holder.Instance
+                        local button = Items["RealDropdown"].Instance
+                        local popup = Items["OptionHolder"].Instance
+                        local bounds = holder.AbsoluteSize
+                        if bounds.X < 16 or bounds.Y < 16 then return end
+                        local origin = button.AbsolutePosition - holder.AbsolutePosition
+                        local popupW = button.AbsoluteSize.X
                         if Dropdown.Multi then
                             popupW = math.max(popupW, IsMobile and 250 or 220)
                         end
-                        Items["OptionHolder"].Instance.Position = UDim2New(0, Items["RealDropdown"].Instance.AbsolutePosition.X, 0, Items["RealDropdown"].Instance.AbsolutePosition.Y + Items["RealDropdown"].Instance.AbsoluteSize.Y + 5)
-                        Items["OptionHolder"].Instance.Size = UDim2New(0, popupW, 0, Dropdown.OptionHolderSize + searchPad + bulkPad)
-                    end)
+                        popupW = math.min(popupW, bounds.X - 12)
+                        local bottom = bounds.Y - 6
+                        if IsMobile and UserInputService.OnScreenKeyboardVisible then
+                            local keyboardTop = UserInputService.OnScreenKeyboardPosition.Y - holder.AbsolutePosition.Y
+                            if keyboardTop > 20 then bottom = math.min(bottom, keyboardTop - 6) end
+                        end
+                        local below = MathClamp(origin.Y + button.AbsoluteSize.Y + 5, 6, bottom)
+                        local above = MathClamp(origin.Y - 5, 6, bottom)
+                        local preferred = Dropdown.OptionHolderSize + searchPad + bulkPad
+                        local opensAbove = bottom - below < preferred and above - 6 > bottom - below
+                        local popupH = MathClamp(preferred, 1, math.max(1, opensAbove and above - 6 or bottom - below))
+                        popup.Position = UDim2FromOffset(MathClamp(origin.X, 6, math.max(6, bounds.X - popupW - 6)),
+                            opensAbove and above - popupH or below)
+                        popup.Size = UDim2FromOffset(popupW, popupH)
+                    end
+                    fitPopup()
+                    RenderStepped = RunService.RenderStepped:Connect(fitPopup)
 
                     for Index, Value in Library.OpenFrames do 
                         if Value ~= Dropdown and not Dropdown.Section.IsSettings then 
@@ -9563,7 +9847,7 @@ local Library do
                     end
 
                     if not Value.ClassName:find("UI") then 
-                        Value.ZIndex = (Dropdown.IsOpen and Dropdown.Section.IsSettings and 8) or (Dropdown.IsOpen and 3) or 1
+                        Value.ZIndex = Dropdown.IsOpen and (Value == Items["OptionHolder"].Instance and 12 or 13) or 1
                     end
 
                     if type(TransparencyProperty) == "table" then 
@@ -9661,7 +9945,7 @@ local Library do
                     Text = "",
                     AutoButtonColor = false,
                     BackgroundTransparency = 1,
-                    Size = UDim2New(1, 0, 0, 20),
+                    Size = UDim2New(1, 0, 0, IsMobile and 38 or 20),
                     BorderSizePixel = 0,
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(255, 255, 255)
@@ -9822,7 +10106,7 @@ local Library do
                     end
                 end
 
-                OptionData.Button:Connect("MouseButton1Down", function()
+                OptionData.Button:Connect("Activated", function()
                     OptionData:Set()
                 end)
 
@@ -9871,19 +10155,19 @@ local Library do
                 end
             end
 
-            Items["RealDropdown"]:Connect("MouseButton1Down", function()
+            Items["RealDropdown"]:Connect("Activated", function()
                 Dropdown:SetOpen(not Dropdown.IsOpen)
             end)
 
             if Items["SelectAll"] then
-                Items["SelectAll"]:Connect("MouseButton1Down", function()
+                Items["SelectAll"]:Connect("Activated", function()
                     local names = {}
                     for _, opt in Dropdown.OptionsWithIndexes do
                         TableInsert(names, opt.Name)
                     end
                     Dropdown:Set(names)
                 end)
-                Items["SelectNone"]:Connect("MouseButton1Down", function()
+                Items["SelectNone"]:Connect("Activated", function()
                     Dropdown:Set({})
                 end)
             end
@@ -9891,7 +10175,8 @@ local Library do
             Library:Connect(UserInputService.InputBegan, function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                     if Dropdown.IsOpen then
-                        if Library:IsMouseOverFrame(Items["OptionHolder"]) then
+                        if Library:IsPointOverFrame(Items["OptionHolder"], Input.Position)
+                            or Library:IsPointOverFrame(Items["RealDropdown"], Input.Position) then
                             return
                         end
 
@@ -9902,8 +10187,10 @@ local Library do
 
             Items["RealDropdown"]:Connect("Changed", function(Property)
                 if Property == "AbsolutePosition" and Dropdown.IsOpen then
-                    Dropdown.IsOpen = not Library:IsClipped(Items["OptionHolder"].Instance, Dropdown.Section.Items["Section"].Instance.Parent)
-                    Items["OptionHolder"].Instance.Visible = Dropdown.IsOpen
+                    local column = Dropdown.Section.Items["Section"].Instance.Parent
+                    if column and Library:IsClipped(Items["RealDropdown"].Instance, column) then
+                        Dropdown:SetOpen(false)
+                    end
                 end
             end)
 
@@ -11270,44 +11557,41 @@ local Library do
                 })
 
                 if Label and Label ~= "" then
-                    Items["LineLeft"] = Instances:Create("Frame", {
+                    Instances:Create("UIListLayout", {
                         Parent = Items["Container"].Instance,
-                        Name = "\0",
-                        AnchorPoint = Vector2New(0, 0.5),
-                        Position = UDim2New(0, 0, 0.5, 0),
-                        Size = UDim2New(0.35, -6, 0, 1),
-                        BorderSizePixel = 0,
-                        ZIndex = 2,
-                        BackgroundColor3 = FromRGB(38, 36, 44)
+                        FillDirection = Enum.FillDirection.Horizontal,
+                        VerticalAlignment = Enum.VerticalAlignment.Center,
+                        SortOrder = Enum.SortOrder.LayoutOrder,
+                        Padding = UDimNew(0, 9),
                     })
 
                     Items["LineRight"] = Instances:Create("Frame", {
                         Parent = Items["Container"].Instance,
-                        Name = "\0",
-                        AnchorPoint = Vector2New(1, 0.5),
-                        Position = UDim2New(1, 0, 0.5, 0),
-                        Size = UDim2New(0.35, -6, 0, 1),
+                        LayoutOrder = 2,
+                        Size = UDim2FromOffset(0, 1),
                         BorderSizePixel = 0,
                         ZIndex = 2,
-                        BackgroundColor3 = FromRGB(38, 36, 44)
+                    })
+                    Items["LineRight"]:AddToTheme({ BackgroundColor3 = "Outline" })
+                    Instances:Create("UIFlexItem", {
+                        Parent = Items["LineRight"].Instance,
+                        FlexMode = Enum.UIFlexMode.Fill,
                     })
 
                     Items["Label"] = Instances:Create("TextLabel", {
                         Parent = Items["Container"].Instance,
-                        Name = "\0",
-                        FontFace = Library.Fonts.Light,
-                        TextColor3 = FromRGB(110, 108, 130),
+                        LayoutOrder = 1,
+                        FontFace = Library.Fonts.SemiBold,
                         Text = Label,
                         AutomaticSize = Enum.AutomaticSize.X,
                         Size = UDim2New(0, 0, 1, 0),
                         BackgroundTransparency = 1,
-                        AnchorPoint = Vector2New(0.5, 0.5),
-                        Position = UDim2New(0.5, 0, 0.5, 0),
-                        TextSize = 12,
+                        TextSize = IsMobile and 14 or 12,
                         ZIndex = 3,
                         BorderSizePixel = 0,
                         BackgroundColor3 = FromRGB(255, 255, 255)
                     })
+                    Items["Label"]:AddToTheme({ TextColor3 = "Accent" })
                 else
                     Items["Line"] = Instances:Create("Frame", {
                         Parent = Items["Container"].Instance,
@@ -11319,6 +11603,7 @@ local Library do
                         ZIndex = 2,
                         BackgroundColor3 = FromRGB(38, 36, 44)
                     })
+                    Items["Line"]:AddToTheme({ BackgroundColor3 = "Outline" })
                 end
             end
 
