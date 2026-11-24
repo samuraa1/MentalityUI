@@ -61,9 +61,12 @@ local Library do
 
     local RectNew = Rect.new
 
-    local IsMobile = UserInputService.TouchEnabled or false
+    local shortestEdge = Camera and math.min(Camera.ViewportSize.X, Camera.ViewportSize.Y)
+    local IsMobile = UserInputService.TouchEnabled
+        or (shortestEdge and shortestEdge > 0 and shortestEdge < 600 and not UserInputService.KeyboardEnabled)
 
     Library = {
+        Build = "mobile-input-20261124.2",
         Theme =  { },
 
         MenuKeybind = tostring(Enum.KeyCode.RightControl), 
@@ -996,8 +999,10 @@ local Library do
         end
     end
 
+    local playerGui = IsMobile and (LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 3))
+    local uiParent = playerGui or gethui()
     Library.Holder = Instances:Create("ScreenGui", {
-        Parent = gethui(),
+        Parent = uiParent,
         Name = "\0",
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
         ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
@@ -1006,7 +1011,7 @@ local Library do
     })
 
     Library.UnusedHolder = Instances:Create("ScreenGui", {
-        Parent = gethui(),
+        Parent = uiParent,
         Name = "\0",
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
         Enabled = false,
@@ -1565,6 +1570,20 @@ local Library do
         return self:IsPointOverFrame(Frame, Vector2New(Mouse.X, Mouse.Y))
     end
 
+    Library.PositionPopup = function(self, popup, anchor)
+        local holder = self.Holder.Instance
+        local bounds, size = holder.AbsoluteSize, popup.AbsoluteSize
+        local origin = anchor.AbsolutePosition - holder.AbsolutePosition
+        local below = origin.Y + anchor.AbsoluteSize.Y + 5
+        local above = origin.Y - size.Y - 5
+        local y = below + size.Y > bounds.Y - 6 and above or below
+        local pivot = popup.AnchorPoint * size
+        popup.Position = UDim2FromOffset(
+            MathClamp(origin.X, 6, math.max(6, bounds.X - size.X - 6)) + pivot.X,
+            MathClamp(y, 6, math.max(6, bounds.Y - size.Y - 6)) + pivot.Y
+        )
+    end
+
     do
         local TooltipPadX = 10
         local TooltipVisible = false
@@ -1572,7 +1591,7 @@ local Library do
         local touchPosition
 
         local TooltipGui = Instances:Create("ScreenGui", {
-            Parent = gethui(),
+            Parent = uiParent,
             Name = "\0",
             ZIndexBehavior = Enum.ZIndexBehavior.Global,
             DisplayOrder = 9998,
@@ -1691,10 +1710,12 @@ local Library do
             if IsMobile then
                 Library:Connect(inst.InputBegan, function(input)
                     if input.UserInputType ~= Enum.UserInputType.Touch or touchTip then return end
-                    local gesture = { input = input, start = input.Position }
+                    local scroll = inst:FindFirstAncestorWhichIsA("ScrollingFrame")
+                    local gesture = { input = input, start = input.Position, canvas = scroll and scroll.CanvasPosition }
                     touchTip = gesture
                     task.delay(0.53, function()
-                        if gesture ~= touchTip or not inst.Parent or not inst.Visible then return end
+                        if gesture ~= touchTip or not inst.Parent or not inst.Visible
+                            or (scroll and gesture.canvas ~= scroll.CanvasPosition) then return end
                         Library._tooltipHoldInput = input
                         Library:ShowTooltip(Text, input.Position)
                     end)
@@ -1711,8 +1732,12 @@ local Library do
             end)
         end
         if IsMobile then
+            Library:Connect(UserInputService.WindowFocusReleased, function()
+                touchTip, Library._tooltipHoldInput = nil, nil
+                if touchPosition then Library:HideTooltip() end
+            end)
             Library:Connect(UserInputService.InputChanged, function(input)
-                if touchTip and input == touchTip.input and (input.Position - touchTip.start).Magnitude > 9 then
+                if touchTip and input == touchTip.input and (input.Position - touchTip.start).Magnitude > 7 then
                     touchTip = nil
                     if touchPosition then Library:HideTooltip() end
                 end
@@ -2301,11 +2326,9 @@ local Library do
                 end
             end
 
-            local SlidingPalette = false
-            local PaletteChanged
-            
             function Colorpicker:SlidePalette(Input)
-                if not Input or not SlidingPalette then
+                local size = Items["Palette"].Instance.AbsoluteSize
+                if not Input or size.X <= 0 or size.Y <= 0 then
                     return
                 end
 
@@ -2322,11 +2345,8 @@ local Library do
                 Colorpicker:Update()
             end
             
-            local SlidingHue = false
-            local HueChanged
-
             function Colorpicker:SlideHue(Input)
-                if not Input or not SlidingHue then
+                if not Input or Items["Hue"].Instance.AbsoluteSize.X <= 0 then
                     return
                 end
                 
@@ -2340,11 +2360,8 @@ local Library do
                 Colorpicker:Update()
             end
 
-            local SlidingAlpha = false 
-            local AlphaChanged
-
             function Colorpicker:SlideAlpha(Input)
-                if not Input or not SlidingAlpha then
+                if not Input or Items["Alpha"].Instance.AbsoluteSize.X <= 0 then
                     return
                 end
 
@@ -2360,6 +2377,7 @@ local Library do
 
             local Debounce = false
             local RenderStepped  
+            local paletteInput, updateColor
 
             function Colorpicker:SetOpen(Bool)
                 if Debounce then 
@@ -2375,6 +2393,10 @@ local Library do
                     Items["ColorpickerWindow"].Instance.Parent = Library.Holder.Instance
                     
                     RenderStepped = RunService.RenderStepped:Connect(function()
+                        if IsMobile then
+                            Library:PositionPopup(Items["ColorpickerWindow"].Instance, Items["ColorpickerButton"].Instance)
+                            return
+                        end
                         Items["ColorpickerWindow"].Instance.Position = UDim2New(
                             0, 
                             Items["ColorpickerButton"].Instance.AbsolutePosition.X, 
@@ -2394,6 +2416,7 @@ local Library do
 
                     Library.OpenFrames[Colorpicker] = Colorpicker 
                 else
+                    paletteInput, updateColor = nil, nil
                     if not Data.Section.IsSettings then
                         --print("sus2")
                         if Library.OpenFrames[Colorpicker] then 
@@ -2464,75 +2487,35 @@ local Library do
                 Colorpicker:Update()
             end
 
-            Items["ColorpickerButton"]:Connect("MouseButton1Down", function()
+            Items["ColorpickerButton"]:Connect("Activated", function()
                 Colorpicker:SetOpen(not Colorpicker.IsOpen)
             end)
 
-            Items["Palette"]:Connect("InputBegan", function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                    SlidingPalette = true 
-
-                    Colorpicker:SlidePalette(Input)
-
-                    if PaletteChanged then
-                        return
-                    end
-
-                    PaletteChanged = Input.Changed:Connect(function()
-                        if Input.UserInputState == Enum.UserInputState.End then
-                            SlidingPalette = false
-
-                            PaletteChanged:Disconnect()
-                            PaletteChanged = nil
-                        end
-                    end)
+            for name, slide in {
+                Palette = Colorpicker.SlidePalette,
+                HueInline = Colorpicker.SlideHue,
+                Alpha = Colorpicker.SlideAlpha,
+            } do
+                Items[name]:Connect("InputBegan", function(input)
+                    if paletteInput or (input.UserInputType ~= Enum.UserInputType.Touch
+                        and input.UserInputType ~= Enum.UserInputType.MouseButton1) then return end
+                    paletteInput, updateColor = input, slide
+                    updateColor(Colorpicker, input)
+                end)
+            end
+            Library:Connect(UserInputService.InputChanged, function(input)
+                if paletteInput and (input == paletteInput or (paletteInput.UserInputType == Enum.UserInputType.MouseButton1
+                    and input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                    updateColor(Colorpicker, input)
                 end
             end)
-
-            Items["HueInline"]:Connect("InputBegan", function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                    SlidingHue = true 
-
-                    Colorpicker:SlideHue(Input)
-
-                    if HueChanged then
-                        return
-                    end
-
-                    HueChanged = Input.Changed:Connect(function()
-                        if Input.UserInputState == Enum.UserInputState.End then
-                            SlidingHue = false
-
-                            HueChanged:Disconnect()
-                            HueChanged = nil
-                        end
-                    end)
-                end
+            Library:Connect(UserInputService.InputEnded, function(input)
+                if input == paletteInput then paletteInput, updateColor = nil, nil end
             end)
+            Library:Connect(UserInputService.WindowFocusReleased, function() paletteInput, updateColor = nil, nil end)
 
-            Items["Alpha"]:Connect("InputBegan", function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                    SlidingAlpha = true 
 
-                    Colorpicker:SlideAlpha(Input)
-
-                    if AlphaChanged then
-                        return
-                    end
-
-                    AlphaChanged = Input.Changed:Connect(function()
-                        if Input.UserInputState == Enum.UserInputState.End then
-                            SlidingAlpha = false
-
-                            AlphaChanged:Disconnect()
-                            AlphaChanged = nil
-                        end
-                    end)
-                end
-            end)
-
-            function AddColor(Color)
-                --if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+            local function AddColor(Color)
                     local SaveIndex = #Colorpicker.SavedColors + 1
 
                     local SavedColor = Instances:Create("TextButton", {
@@ -2579,13 +2562,12 @@ local Library do
                         Alpha = Colorpicker.Alpha,
                     }
     
-                    SavedColor:Connect("MouseButton1Down", function()
+                    SavedColor:Connect("Activated", function()
                         local NewColorData = Colorpicker.SavedColors[SaveIndex]
                         Colorpicker:Set(NewColorData.Color, NewColorData.Alpha)
                     end)
 
                     SavedColor:Tween(nil, {BackgroundTransparency = 0})
-                --end
             end
 
             local Colors = {
@@ -2626,29 +2608,14 @@ local Library do
                 Colorpicker:Set(tostring(Items["HEXInput"].Instance.Text), Colorpicker.Alpha)
             end)
 
-            Library:Connect(UserInputService.InputChanged, function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
-                    if SlidingPalette then 
-                        Colorpicker:SlidePalette(Input)
-                    end
-
-                    if SlidingHue then
-                        Colorpicker:SlideHue(Input)
-                    end
-
-                    if SlidingAlpha then
-                        Colorpicker:SlideAlpha(Input)
-                    end
-                end
-            end)
-
             Library:Connect(UserInputService.InputBegan, function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                     if not Colorpicker.IsOpen then
                         return
                     end
 
-                    if Library:IsMouseOverFrame(Items["ColorpickerWindow"]) or Library:IsMouseOverFrame(Items["PaletteIcon"]) and not Data.Section.IsSettings then
+                    if Library:IsPointOverFrame(Items["ColorpickerWindow"], Input.Position)
+                        or Library:IsPointOverFrame(Items["ColorpickerButton"], Input.Position) then
                         return
                     end
 
@@ -4638,9 +4605,21 @@ local Library do
             local Items = { } do
                 -- Same radius everywhere as MainFrame top-left (outer shell).
                 local WINDOW_CORNER_RADIUS = 14
+                local windowHost = Library.Holder.Instance
+                if IsMobile then
+                    windowHost = Instances:Create("Frame", {
+                        Parent = windowHost,
+                        Name = "WindowViewport",
+                        Position = UDim2FromOffset(0, 0),
+                        Size = UDim2New(1, 0, 1, 0),
+                        BackgroundTransparency = 1,
+                        Active = false,
+                        BorderSizePixel = 0,
+                    }).Instance
+                end
 
                 Items["MainFrame"] = Instances:Create("Frame", {
-                    Parent = Library.Holder.Instance,
+                    Parent = windowHost,
                     Name = "\0",
                     BorderColor3 = Library.Theme.Background,
                     AnchorPoint = Vector2New(0.5, 0.5),
@@ -4672,10 +4651,13 @@ local Library do
                 end
 
                 Library.MainFrame = Items["MainFrame"]
+                Library.MainWindow = Window
                 if not IsMobile then
                     Items["MainFrame"]:MakeResizeable(Vector2New(Items["MainFrame"].Instance.AbsoluteSize.X, Items["MainFrame"].Instance.AbsoluteSize.Y), Vector2New(9999, 9999), OriginalSizes)
                 end
-                Library:MakeBlurred(Items["MainFrame"], Window)
+                if not IsMobile then
+                    Library:MakeBlurred(Items["MainFrame"], Window)
+                end
 
                 -- Visible resize handle: parented to Holder so MainFrame UIScale does not scale the grip.
                 if not IsMobile then
@@ -4796,62 +4778,53 @@ local Library do
                     ScrollingEnabled = true,
                     Active = true,
                     ClipsDescendants = true,
-                    ZIndex = 3,
+                    ZIndex = 2,
                 })  Items["LeftTabsScroll"]:AddToTheme({ScrollBarImageColor3 = "Accent"})
 
-                -- Blur on LeftTabs caused a dark seam at the bottom-left; main panel blur is enough.
-                local Gui = Items["MainFrame"].Instance
-
-                local Dragging = false 
-                local DragStart
-                local StartPosition 
-    
-                local Set = function(Input)
-                    local DragDelta = Input.Position - DragStart
-                    Items["MainFrame"]:Tween(TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2New(StartPosition.X.Scale, StartPosition.X.Offset + DragDelta.X, StartPosition.Y.Scale, StartPosition.Y.Offset + DragDelta.Y)})
-                end
-    
-                Items["MainFrame"]:Connect("InputBegan", function(Input)
-                    if not IsMobile and Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                        Dragging = true
-    
-                        DragStart = Input.Position
-                        StartPosition = Gui.Position
-    
-                        Input.Changed:Connect(function()
-                            if Input.UserInputState == Enum.UserInputState.End then
-                                Dragging = false
-                            end
-                        end)
+                local main = Items["MainFrame"].Instance
+                local drag, mobileOffset = nil, Vector2.zero
+                local header = Instances:Create("Frame", {
+                    Parent = main,
+                    Name = "WindowDragHandle",
+                    Position = UDim2FromOffset(54, 0),
+                    Size = UDim2New(1, IsMobile and -166 or -140, 0, 55),
+                    BackgroundTransparency = 1,
+                    Active = true,
+                    ZIndex = 3,
+                })
+                header:Connect("InputBegan", function(input)
+                    local touch = input.UserInputType == Enum.UserInputType.Touch
+                    if drag or (not touch and input.UserInputType ~= Enum.UserInputType.MouseButton1) then return end
+                    drag = {
+                        input = input,
+                        touch = touch,
+                        start = input.Position,
+                        position = main.Position,
+                        origin = main.AbsolutePosition - windowHost.AbsolutePosition,
+                    }
+                end)
+                Library:Connect(UserInputService.InputChanged, function(input)
+                    if not drag or not Window.IsOpen then return end
+                    if drag.touch and input ~= drag.input then return end
+                    if not drag.touch and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                    local movement = input.Position - drag.start
+                    if not drag.moved and movement.Magnitude < (drag.touch and 8 or 4) then return end
+                    drag.moved = true
+                    local position = drag.origin + Vector2New(movement.X, movement.Y)
+                    local limit = windowHost.AbsoluteSize - main.AbsoluteSize
+                    local delta = Vector2New(MathClamp(position.X, 0, math.max(0, limit.X)),
+                        MathClamp(position.Y, 0, math.max(0, limit.Y))) - drag.origin
+                    local base = drag.position
+                    main.Position = UDim2New(base.X.Scale, base.X.Offset + delta.X, base.Y.Scale, base.Y.Offset + delta.Y)
+                    if IsMobile then mobileOffset = Vector2New(main.Position.X.Offset, main.Position.Y.Offset) end
+                end)
+                Library:Connect(UserInputService.InputEnded, function(input)
+                    if drag and (input == drag.input
+                        or (not drag.touch and input.UserInputType == Enum.UserInputType.MouseButton1)) then
+                        drag = nil
                     end
                 end)
-
-                Items["LeftTabs"]:Connect("InputBegan", function(Input)
-                    if IsMobile then return end
-                    if Items["TabSearch"] and Library:IsMouseOverFrame(Items["TabSearch"]) then
-                        return
-                    end
-                    if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                        Dragging = true
-    
-                        DragStart = Input.Position
-                        StartPosition = Gui.Position
-    
-                        Input.Changed:Connect(function()
-                            if Input.UserInputState == Enum.UserInputState.End then
-                                Dragging = false
-                            end
-                        end)
-                    end
-                end)
-    
-                Library:Connect(UserInputService.InputChanged, function(Input)
-                    if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
-                        if Dragging then
-                            Set(Input)
-                        end
-                    end
-                end)
+                Library:Connect(UserInputService.WindowFocusReleased, function() drag = nil end)
 
                 do
                     Items["FloatingButton"] = Instances:Create("TextButton", {
@@ -5652,8 +5625,6 @@ local Library do
                 end)
                 
                 if IsMobile then
-                    local holder = Library.Holder.Instance
-                    local main = Items["MainFrame"].Instance
                     local sidebar = Items["LeftTabs"].Instance
                     local content = Items["Content"].Instance
                     local narrow, navigationOpen = false, false
@@ -5706,9 +5677,21 @@ local Library do
                     end
                     navigation:Connect("Activated", function() Window:SetNavigationOpen(not navigationOpen) end)
 
-                    local scale = Items["MobileUIScale"].Instance.Scale
-                    function Window:FitMobileWindow()
-                        local bounds = holder.AbsoluteSize
+                    local mobileScale = Items["MobileUIScale"].Instance
+                    local baseScale, dpiFactor = mobileScale.Scale, 1
+                    local function updateMobileVisibility()
+                        local bounds = windowHost.AbsoluteSize
+                        local topLeft = main.AbsolutePosition - windowHost.AbsolutePosition
+                        local size = main.AbsoluteSize
+                        local remaining = bounds - topLeft - size
+                        main.Visible = Window.IsOpen and size.X > 0 and size.Y > 0
+                            and math.min(topLeft.X, topLeft.Y, remaining.X, remaining.Y) >= -2
+                    end
+
+                    function Window:FitMobileWindow(recenter)
+                        drag = nil
+                        if recenter then mobileOffset = Vector2.zero end
+                        local bounds = windowHost.AbsoluteSize
                         if bounds.X <= 0 or bounds.Y <= 0 then
                             main.Visible = false
                             return
@@ -5717,13 +5700,17 @@ local Library do
                         local width = MathClamp(bounds.X - 24, 1, 780)
                         local height = MathClamp(bounds.Y - 24, 1, 550)
                         if preferred then
-                            local preferredWidth = bounds.X * preferred.X.Scale + preferred.X.Offset * scale
-                            local preferredHeight = bounds.Y * preferred.Y.Scale + preferred.Y.Offset * scale
+                            local preferredWidth = bounds.X * preferred.X.Scale + preferred.X.Offset * baseScale
+                            local preferredHeight = bounds.Y * preferred.Y.Scale + preferred.Y.Offset * baseScale
                             if preferredWidth > 0 then width = math.min(width, preferredWidth) end
                             if preferredHeight > 0 then height = math.min(height, preferredHeight) end
                         end
+                        local room = (bounds - Vector2New(width, height)) * 0.5
+                        mobileOffset = Vector2New(MathClamp(mobileOffset.X, -room.X, room.X), MathClamp(mobileOffset.Y, -room.Y, room.Y))
+                        local scale = math.min(baseScale * dpiFactor, width / 285, height / 160)
+                        mobileScale.Scale = scale
                         main.AnchorPoint = Vector2New(0.5, 0.5)
-                        main.Position = UDim2FromOffset(bounds.X * 0.5, bounds.Y * 0.5)
+                        main.Position = UDim2New(0.5, mobileOffset.X, 0.5, mobileOffset.Y)
                         main.Size = UDim2FromOffset(math.floor(width / scale), math.floor(height / scale))
 
                         local wasNarrow = narrow
@@ -5748,9 +5735,15 @@ local Library do
                             label.TextXAlignment = Enum.TextXAlignment.Left
                         end
                         Window:SetNavigationOpen(wasNarrow and navigationOpen)
-                        main.Visible = Window.IsOpen
+                        updateMobileVisibility()
                     end
-                    Library:Connect(holder:GetPropertyChangedSignal("AbsoluteSize"), function() Window:FitMobileWindow() end)
+                    function Window:SetMobileDPIScale(factor)
+                        dpiFactor = factor
+                        self:FitMobileWindow()
+                    end
+                    Library:Connect(windowHost:GetPropertyChangedSignal("AbsoluteSize"), function() Window:FitMobileWindow() end)
+                    Library:Connect(main:GetPropertyChangedSignal("AbsolutePosition"), updateMobileVisibility)
+                    Library:Connect(main:GetPropertyChangedSignal("AbsoluteSize"), updateMobileVisibility)
                     Window:FitMobileWindow()
                 end
 
@@ -5769,14 +5762,14 @@ local Library do
 
             function Window:SetCenter()
                 if IsMobile then
-                    Window:FitMobileWindow()
+                    Window:FitMobileWindow(true)
                     return
                 end
-                local CenterPosition = Items["MainFrame"].Instance.AbsolutePosition
                 task.wait()
-                Items["MainFrame"].Instance.AnchorPoint = Vector2New(0, 0)
-
-                Items["MainFrame"].Instance.Position = UDim2New(0, CenterPosition.X, 0, CenterPosition.Y)
+                local frame = Items["MainFrame"].Instance
+                local offset = frame.AbsolutePosition - frame.Parent.AbsolutePosition
+                frame.AnchorPoint = Vector2.zero
+                frame.Position = UDim2FromOffset(offset.X, offset.Y)
             end
 
             function Window:SetOpen(Bool)
@@ -5839,6 +5832,22 @@ local Library do
 
             function Window:Toggle()
                 Window:SetOpen(not Window.IsOpen)
+            end
+
+            function Window:ShowPage(page)
+                if page.Window ~= self then return false end
+                if not page.Active then
+                    local now = tick()
+                    if not IsMobile and now < self._tabCooldownUntil then return false end
+                    page:Turn(true)
+                    if not page.Active then return false end
+                    for _, other in self.Pages do
+                        if other ~= page and other.InstantDeactivate then other:InstantDeactivate() end
+                    end
+                    self._tabCooldownUntil = now + self.TabSwitchCooldownSec
+                end
+                if self.SetNavigationOpen then self:SetNavigationOpen(false) end
+                return true
             end
 
             function Window:Init()
@@ -6151,11 +6160,13 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  Items["Text"]:AddToTheme({TextColor3 = "Text"})      
                 
-                Items["Page"] = Instances:Create("CanvasGroup", {
+                Items["Inactive"].Instance.ZIndex = 3
+                for _, name in { "TabIndicator", "Text", "Icon" } do Items[name].Instance.ZIndex = 4 end
+                Items["Page"] = Instances:Create(IsMobile and "Frame" or "CanvasGroup", {
                     Parent = Library.UnusedHolder.Instance,
                     Name = "\0",
                     Visible = false,
-                    GroupTransparency = 1,
+                    GroupTransparency = not IsMobile and 1 or nil,
                     BackgroundTransparency = 1,
                     Size = UDim2New(1, 0, 1, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
@@ -6200,6 +6211,8 @@ local Library do
                         AutomaticCanvasSize = Enum.AutomaticSize.Y,
                         ScrollBarThickness = IsMobile and 4 or 0,
                         ScrollingDirection = Enum.ScrollingDirection.Y,
+                        ScrollingEnabled = true,
+                        ClipsDescendants = true,
                         BorderColor3 = FromRGB(0, 0, 0),
                         BackgroundTransparency = 1,
                         Size = UDim2New(0, 100, 0, 100),
@@ -6387,9 +6400,10 @@ local Library do
                 Items["TabIndicator"].Instance.BackgroundTransparency = 1
                 Items["Page"].Instance.Visible = false
                 Items["Page"].Instance.Parent = Library.UnusedHolder.Instance
-                Items["Page"].Instance.GroupTransparency = 1
+                if not IsMobile then Items["Page"].Instance.GroupTransparency = 1 end
                 Page.Active = false
                 Debounce = false
+                if IsMobile then return end
                 for _, Sec in Page.Sections do
                     task.spawn(function()
                         Sec:TweenElements(false, true)
@@ -6398,6 +6412,18 @@ local Library do
             end
 
             function Page:Turn(Bool)
+                if IsMobile then
+                    if not Bool then self:InstantDeactivate(); return end
+                    local panel = Items["Page"].Instance
+                    panel.Position = UDim2FromOffset(0, 0)
+                    panel.Parent = Page.Window.Items["Content"].Instance
+                    panel.Visible = true
+                    Items["Inactive"].Instance.BackgroundTransparency = 0.88
+                    Items["TabIndicator"].Instance.BackgroundTransparency = 0
+                    Page.Active = true
+                    for _, section in Page.Sections do section:TweenElements(true) end
+                    return
+                end
                 if Debounce then 
                     return 
                 end
@@ -6463,24 +6489,7 @@ local Library do
             end
 
             Items["Inactive"]:Connect("Activated", function()
-                local W = Page.Window
-                if W.SetNavigationOpen then W:SetNavigationOpen(false) end
-                local now = tick()
-                if now < (W._tabCooldownUntil or 0) then
-                    return
-                end
-                for _, Value in Page.Window.Pages do 
-                    if Value == Page and Page.Active then
-                        return
-                    end
-                end
-                for _, Value in Page.Window.Pages do 
-                    if Value ~= Page and Value.InstantDeactivate then
-                        Value:InstantDeactivate()
-                    end
-                end
-                Page:Turn(true)
-                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 0.5)
+                Page.Window:ShowPage(Page)
             end)
 
             if #Page.Window.Pages == 0 then 
@@ -6518,7 +6527,7 @@ local Library do
                 Credits = Data.Credits or {}
             }
 
-            local AddQuickCard
+            local AddQuickCard, ResizeQuickCards
             local DashItems = {} do
                 -- Tab button (same as normal page)
                 DashItems["Inactive"] = Instances:Create("TextButton", {
@@ -6609,11 +6618,13 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })  DashItems["Text"]:AddToTheme({TextColor3 = "Text"})
 
-                DashItems["Page"] = Instances:Create("CanvasGroup", {
+                DashItems["Inactive"].Instance.ZIndex = 3
+                for _, name in { "TabIndicator", "Text", "Icon" } do DashItems[name].Instance.ZIndex = 4 end
+                DashItems["Page"] = Instances:Create(IsMobile and "Frame" or "CanvasGroup", {
                     Parent = Library.UnusedHolder.Instance,
                     Name = "\0",
                     Visible = false,
-                    GroupTransparency = 1,
+                    GroupTransparency = not IsMobile and 1 or nil,
                     BackgroundTransparency = 1,
                     Size = UDim2New(1, 0, 1, 0),
                     BorderColor3 = FromRGB(0, 0, 0),
@@ -6623,8 +6634,26 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })
 
+                local dashboardBody = DashItems["Page"].Instance
+                if IsMobile then
+                    local scroll = Instances:Create("ScrollingFrame", {
+                        Parent = dashboardBody,
+                        Name = "DashboardScroll",
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                        Size = UDim2New(1, 0, 1, 0),
+                        ScrollBarThickness = 4,
+                        ScrollingDirection = Enum.ScrollingDirection.Y,
+                        ScrollingEnabled = true,
+                        Active = true,
+                        ZIndex = 2,
+                    })
+                    scroll:AddToTheme({ ScrollBarImageColor3 = "Accent" })
+                    dashboardBody = scroll.Instance
+                end
+
                 Instances:Create("UIPadding", {
-                    Parent = DashItems["Page"].Instance,
+                    Parent = dashboardBody,
                     Name = "\0",
                     PaddingTop = UDimNew(0, 16),
                     PaddingBottom = UDimNew(0, 16),
@@ -6642,7 +6671,7 @@ local Library do
                 end)
 
                 DashItems["HeroRow"] = Instances:Create("Frame", {
-                    Parent = DashItems["Page"].Instance,
+                    Parent = dashboardBody,
                     Name = "\0",
                     BackgroundTransparency = 1,
                     Size = UDim2New(1, 0, 0, 190),
@@ -6809,7 +6838,7 @@ local Library do
                         return RGBSequence{RGBSequenceKeypoint(0, Library.Theme.Accent), RGBSequenceKeypoint(1, Library.Theme.AccentGradient)}
                     end})
 
-                    linkBtn:Connect("MouseButton1Down", function()
+                    linkBtn:Connect("Activated", function()
                         if link.Callback then Library:SafeCall(link.Callback) end
                     end)
                     linkBtn:OnHover(function()
@@ -7145,7 +7174,7 @@ local Library do
                 end
 
                 DashItems["Sep1"] = Instances:Create("Frame", {
-                    Parent = DashItems["Page"].Instance,
+                    Parent = dashboardBody,
                     Name = "\0",
                     BackgroundColor3 = FromRGB(38, 36, 46),
                     Position = UDim2New(0, 0, 0, 196),
@@ -7158,7 +7187,7 @@ local Library do
                 local qaLabelY = 206
                 if #DashPage.Credits > 0 then
                     Instances:Create("TextLabel", {
-                        Parent = DashItems["Page"].Instance,
+                        Parent = dashboardBody,
                         Name = "\0",
                         FontFace = Library.Fonts.Light,
                         TextColor3 = FromRGB(80, 78, 102),
@@ -7175,7 +7204,7 @@ local Library do
                     })
 
                     local creditsRow = Instances:Create("Frame", {
-                        Parent = DashItems["Page"].Instance,
+                        Parent = dashboardBody,
                         Name = "\0",
                         BackgroundTransparency = 1,
                         Position = UDim2New(0, 0, 0, 224),
@@ -7245,7 +7274,7 @@ local Library do
 
                     qaLabelY = 224 + #DashPage.Credits * 20 + 12
                     DashItems["Sep2"] = Instances:Create("Frame", {
-                        Parent = DashItems["Page"].Instance,
+                        Parent = dashboardBody,
                         Name = "\0",
                         BackgroundColor3 = FromRGB(38, 36, 46),
                         Position = UDim2New(0, 0, 0, qaLabelY),
@@ -7259,7 +7288,7 @@ local Library do
                 end
 
                 DashItems["QASep"] = Instances:Create("TextLabel", {
-                    Parent = DashItems["Page"].Instance,
+                    Parent = dashboardBody,
                     Name = "\0",
                     FontFace = Library.Fonts.Light,
                     TextColor3 = FromRGB(80, 78, 102),
@@ -7276,7 +7305,7 @@ local Library do
                 })
 
                 DashItems["QARow"] = Instances:Create("Frame", {
-                    Parent = DashItems["Page"].Instance,
+                    Parent = dashboardBody,
                     Name = "\0",
                     BackgroundTransparency = 1,
                     Position = UDim2New(0, 0, 0, qaLabelY + 22),
@@ -7286,13 +7315,36 @@ local Library do
                     BackgroundColor3 = FromRGB(255, 255, 255)
                 })
 
-                Instances:Create("UIListLayout", {
-                    Parent = DashItems["QARow"].Instance,
-                    Name = "\0",
-                    FillDirection = Enum.FillDirection.Horizontal,
-                    Padding = UDimNew(0, 10),
-                    SortOrder = Enum.SortOrder.LayoutOrder
-                })
+                if IsMobile then
+                    local columns, cardHeight, gap = 3, 116, 8
+                    Instances:Create("UIGridLayout", {
+                        Parent = DashItems["QARow"].Instance,
+                        CellSize = UDim2New(1 / columns, -6, 0, cardHeight),
+                        CellPadding = UDim2FromOffset(gap, gap),
+                        FillDirectionMaxCells = columns,
+                        SortOrder = Enum.SortOrder.LayoutOrder,
+                    })
+                    ResizeQuickCards = function()
+                        local rows = math.ceil(#DashPage.QuickAccess / columns)
+                        local height = rows * cardHeight + math.max(0, rows - 1) * gap
+                        DashItems["QARow"].Instance.Size = UDim2New(1, -5, 0, height)
+                        dashboardBody.CanvasSize = UDim2FromOffset(0, qaLabelY + 22 + height + 36)
+                    end
+                    ResizeQuickCards()
+                else
+                    Instances:Create("UIListLayout", {
+                        Parent = DashItems["QARow"].Instance,
+                        FillDirection = Enum.FillDirection.Horizontal,
+                        Padding = UDimNew(0, 10),
+                        SortOrder = Enum.SortOrder.LayoutOrder,
+                    })
+                    ResizeQuickCards = function()
+                        local numCards = #DashPage.QuickAccess
+                        for i, card in DashItems["QACards"] do
+                            card.Instance.Size = UDim2New(1 / numCards, i < numCards and -8 or 0, 1, 0)
+                        end
+                    end
+                end
 
                 DashItems["QACards"] = {}
 
@@ -7388,22 +7440,9 @@ local Library do
                         Tween:Create(cardStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {Color = FromRGB(38, 36, 46), Transparency = 0}, true)
                     end)
 
-                    card:Connect("MouseButton1Down", function()
+                    card:Connect("Activated", function()
                         if type(CardData.Tab) == "table" and CardData.Tab.Turn then
-                            local W = DashPage.Window
-                            local now = tick()
-                            if now < (W._tabCooldownUntil or 0) then return end
-                            local target = CardData.Tab
-                            for _, P in DashPage.Window.Pages do
-                                if P == target and target.Active then return end
-                            end
-                            for _, P in DashPage.Window.Pages do
-                                if P ~= target and P.InstantDeactivate then
-                                    P:InstantDeactivate()
-                                end
-                            end
-                            target:Turn(true)
-                            W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 0.5)
+                            DashPage.Window:ShowPage(CardData.Tab)
                         elseif type(CardData.Callback) == "function" then
                             Library:SafeCall(CardData.Callback)
                         end
@@ -7431,12 +7470,23 @@ local Library do
                 DashItems["TabIndicator"].Instance.BackgroundTransparency = 1
                 DashItems["Page"].Instance.Visible = false
                 DashItems["Page"].Instance.Parent = Library.UnusedHolder.Instance
-                DashItems["Page"].Instance.GroupTransparency = 1
+                if not IsMobile then DashItems["Page"].Instance.GroupTransparency = 1 end
                 DashPage.Active = false
                 DashDebounce = false
             end
 
             function DashPage:Turn(Bool)
+                if IsMobile then
+                    if not Bool then self:InstantDeactivate(); return end
+                    local panel = DashItems["Page"].Instance
+                    panel.Position = UDim2FromOffset(0, 0)
+                    panel.Parent = DashPage.Window.Items["Content"].Instance
+                    panel.Visible = true
+                    DashItems["Inactive"].Instance.BackgroundTransparency = 0.88
+                    DashItems["TabIndicator"].Instance.BackgroundTransparency = 0
+                    DashPage.Active = true
+                    return
+                end
                 if DashDebounce then return end
                 DashPage.Active = Bool
                 DashDebounce = true
@@ -7498,28 +7548,11 @@ local Library do
                 local idx = #DashItems["QACards"] + 1
                 TableInsert(DashPage.QuickAccess, CardData)
                 AddQuickCard(CardData, idx)
-                -- Rebalance card sizes
-                local numCards = #DashPage.QuickAccess
-                for i, card in DashItems["QACards"] do
-                    card.Instance.Size = UDim2New(1 / numCards, i < numCards and -8 or 0, 1, 0)
-                end
+                ResizeQuickCards()
             end
 
             DashItems["Inactive"]:Connect("Activated", function()
-                if DashPage.Window.SetNavigationOpen then DashPage.Window:SetNavigationOpen(false) end
-                local W = DashPage.Window
-                local now = tick()
-                if now < (W._tabCooldownUntil or 0) then return end
-                for _, Value in DashPage.Window.Pages do
-                    if Value == DashPage and DashPage.Active then return end
-                end
-                for _, Value in DashPage.Window.Pages do
-                    if Value ~= DashPage and Value.InstantDeactivate then
-                        Value:InstantDeactivate()
-                    end
-                end
-                DashPage:Turn(true)
-                W._tabCooldownUntil = now + (W.TabSwitchCooldownSec or 0.5)
+                DashPage.Window:ShowPage(DashPage)
             end)
 
             if #DashPage.Window.Pages == 0 then
@@ -8676,12 +8709,13 @@ local Library do
                         CornerRadius = UDimNew(0, 6)
                     })                    
 
-                    SettingsItem["SettingsIcon"] = Instances:Create("ImageLabel", {
+                    SettingsItem["SettingsIcon"] = Instances:Create("ImageButton", {
                         Parent = Items["Text"].Instance,
+                        AutoButtonColor = false,
                         Name = "\0",
                         ImageColor3 = FromRGB(141, 141, 150),
                         BorderColor3 = FromRGB(0, 0, 0),
-                        Size = UDim2New(0, 14, 0, 14),
+                        Size = UDim2FromOffset(IsMobile and 30 or 14, IsMobile and 30 or 14),
                         AnchorPoint = Vector2New(0, 0.5),
                         Image = "rbxassetid://101500482366184",
                         BackgroundTransparency = 1,
@@ -8826,6 +8860,14 @@ local Library do
                         SettingsItem["Settings"].Instance.Parent = Library.Holder.Instance
                         
                         RenderStepped = RunService.RenderStepped:Connect(function()
+                            local panel = SettingsItem["Settings"].Instance
+                            if IsMobile then
+                                local bounds = Library.Holder.Instance.AbsoluteSize
+                                panel.Size = UDim2FromOffset(math.min(245, math.max(1, bounds.X - 12)),
+                                    math.min(Size, math.max(1, bounds.Y - 12)))
+                                Library:PositionPopup(panel, SettingsItem["SettingsIcon"].Instance)
+                                return
+                            end
                             SettingsItem["Settings"].Instance.Position = UDim2New(
                                 0, Items["Toggle"].Instance.AbsolutePosition.X + Items["Toggle"].Instance.AbsoluteSize.X / 1.9 + 15, 
                                 0, Items["Toggle"].Instance.AbsolutePosition.Y + Items["Toggle"].Instance.AbsoluteSize.Y + Size / 1.9)
@@ -8887,19 +8929,18 @@ local Library do
                     end)
                 end
 
-                SettingsItem["Button"]:Connect("MouseButton1Down", function()
+                SettingsItem["Button"]:Connect("Activated", function()
                     Settings:SetOpen(false)
                 end)
 
-                SettingsItem["SettingsIcon"]:Connect("InputBegan", function(Input)
-                    if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-                        Settings:SetOpen(not Settings.IsOpen)
-                    end
+                SettingsItem["SettingsIcon"]:Connect("Activated", function()
+                    Settings:SetOpen(not Settings.IsOpen)
                 end)
 
                 Library:Connect(UserInputService.InputBegan, function(Input)
                     if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-                        if Library:IsMouseOverFrame(SettingsItem["Settings"]) then
+                        if Library:IsPointOverFrame(SettingsItem["Settings"], Input.Position)
+                            or Library:IsPointOverFrame(SettingsItem["SettingsIcon"], Input.Position) then
                             return 
                         end
 
@@ -12232,25 +12273,19 @@ Library.Sections.StatCard = function(self, Data)
 
     Library.SetDPIScale = function(self, Scale)
         local factor = math.clamp((Scale or 100) / 100, 0.5, 2)
-        pcall(function()
-            local mainFrame = Library.MainFrame and Library.MainFrame.Instance
-            if not mainFrame then return end
-            local ap = mainFrame.AbsolutePosition
-            local as = mainFrame.AbsoluteSize
-            local cx = ap.X + as.X * 0.5
-            local cy = ap.Y + as.Y * 0.5
-            local s = mainFrame:FindFirstChildOfClass("UIScale")
-            if not s then
-                s = Instance.new("UIScale")
-                s.Parent = mainFrame
-            end
-            s.Scale = factor
-            task.defer(function()
-                if not mainFrame.Parent then return end
-                local nas = mainFrame.AbsoluteSize
-                mainFrame.Position = UDim2FromOffset(cx - nas.X * 0.5, cy - nas.Y * 0.5)
-            end)
-        end)
+        local window = self.MainWindow
+        if window and window.SetMobileDPIScale then
+            window:SetMobileDPIScale(factor)
+            return
+        end
+        local frame = self.MainFrame and self.MainFrame.Instance
+        if not frame or not frame.Parent then return end
+        local scale = frame:FindFirstChildOfClass("UIScale")
+        if not scale then scale = InstanceNew("UIScale", frame) end
+        local sizeChange = frame.AbsoluteSize * (1 - factor / scale.Scale)
+        local offset = sizeChange * (Vector2New(0.5, 0.5) - frame.AnchorPoint)
+        frame.Position += UDim2FromOffset(offset.X, offset.Y)
+        scale.Scale = factor
     end
 
     do
